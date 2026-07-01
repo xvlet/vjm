@@ -24,7 +24,18 @@ func NewStressTestUsecase(jmx JmxParser, runner VegetaRunner, rep JmeterReporter
 	}
 }
 
+// NewReportOnlyUsecase creates a lightweight usecase for report generation only.
+// Calling Execute() on this instance will return an error.
+func NewReportOnlyUsecase(rep JmeterReporter) StressTestUsecase {
+	return &defaultStressTestUsecase{reporter: rep}
+}
+
 func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.TestConfig) error {
+	// Guard against misconfigured report-only instances
+	if u.jmxParser == nil || u.runner == nil {
+		return fmt.Errorf("Execute requires a fully configured usecase; use NewStressTestUsecase")
+	}
+
 	log.Println("[Usecase] Parsing JMX Template...")
 	plan, err := u.jmxParser.Parse(config.JmxFilePath)
 	if err != nil {
@@ -87,12 +98,16 @@ func (u *defaultStressTestUsecase) GenerateReportOnly(inputPath string, reportDi
 		log.Printf("[Usecase] JTL file provided directly (%s), skipping bin conversion.", jtlPath)
 	}
 
-	if reportDirPath != "" {
-		log.Printf("[Usecase] Generating HTML Report to %s...", reportDirPath)
-		err := u.reporter.GenerateHTML(jtlPath, reportDirPath, 1000)
-		if err != nil {
-			return fmt.Errorf("HTML report generation failed: %w", err)
-		}
+	if reportDirPath == "" {
+		log.Println("[Usecase] No report directory specified (-e). Skipping HTML report generation.")
+		log.Printf("[Usecase] JTL file is ready at: %s", jtlPath)
+		log.Println("[Usecase] Report generation flow completed successfully!")
+		return nil
+	}
+
+	log.Printf("[Usecase] Generating HTML Report to %s...", reportDirPath)
+	if err := u.reporter.GenerateHTML(jtlPath, reportDirPath, 1000); err != nil {
+		return fmt.Errorf("HTML report generation failed: %w", err)
 	}
 
 	log.Println("[Usecase] Report generation flow completed successfully!")

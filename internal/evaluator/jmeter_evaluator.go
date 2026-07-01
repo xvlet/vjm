@@ -101,10 +101,11 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 
 	switch funcName {
 	case "__time":
-		format := "20060102150405" // fallback
-		if len(args) > 0 && args[0] != "" {
-			format = mapJavaTimeToGo(args[0])
+		// JMeter spec: no args → Unix epoch milliseconds
+		if len(args) == 0 || args[0] == "" {
+			return strconv.FormatInt(time.Now().UnixMilli(), 10)
 		}
+		format := mapJavaTimeToGo(args[0])
 		return time.Now().Format(format)
 
 	case "__RandomString":

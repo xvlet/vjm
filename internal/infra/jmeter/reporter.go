@@ -80,6 +80,7 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 		}
 		if err != nil {
 			if _, ok := err.(*csv.ParseError); ok {
+				log.Printf("[WARN] Skipping invalid CSV record: %v", err)
 				continue
 			}
 			return fmt.Errorf("csv read error: %w", err)
@@ -132,7 +133,9 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 	}
 
 	writer.Flush()
-	_ = writer.Error()
+	if err := writer.Error(); err != nil {
+		return fmt.Errorf("JTL write error: %w", err)
+	}
 	return cmd.Wait()
 }
 
@@ -156,6 +159,13 @@ func (r *Reporter) GenerateHTML(jtlPath, reportDir string, granularity int) erro
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	// JMeter fails if the output directory already exists; remove it first.
+	if _, err := os.Stat(reportDir); err == nil {
+		if err := os.RemoveAll(reportDir); err != nil {
+			return fmt.Errorf("failed to remove existing report dir %s: %w", reportDir, err)
+		}
+	}
 
 	log.Printf("[JmeterReporter] Generating HTML report to %s...", reportDir)
 	return cmd.Run()

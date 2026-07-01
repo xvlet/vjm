@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"time"
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
 )
@@ -76,6 +77,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	log.Printf("[VegetaRunner] Rate     : %d TPS", config.Rate)
 	log.Printf("[VegetaRunner] Duration : %s", config.Duration)
 	log.Printf("[VegetaRunner] Workers  : %d", config.Workers)
+	attackStart := time.Now()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start vegeta: %w", err)
 	}
@@ -139,6 +141,13 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	}()
 
 	err = cmd.Wait()
-	log.Printf("[VegetaRunner] Attack completed. Results saved to %s", config.ResultBinPath)
-	return err
+	elapsed := time.Since(attackStart).Round(time.Millisecond)
+	log.Printf("[VegetaRunner] Attack completed in %s. Results saved to %s", elapsed, config.ResultBinPath)
+	if err != nil {
+		// Remove incomplete result file to avoid corrupting future report runs
+		_ = outFile.Close()
+		_ = os.Remove(config.ResultBinPath)
+		return fmt.Errorf("vegeta attack failed: %w", err)
+	}
+	return nil
 }

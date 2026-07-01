@@ -172,34 +172,30 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "HTTPSampler.domain":
 					if inConfigTestElement {
 						defDomain = val
+					} else {
+						domainVal = val
 					}
-					domainVal = val
 				case "HTTPSampler.port":
 					if inConfigTestElement {
 						defPort = val
+					} else {
+						portVal = val
 					}
-					portVal = val
 				case "HTTPSampler.path":
 					if inConfigTestElement {
 						defPath = val
+					} else {
+						pathVal = val
 					}
-					pathVal = val
 				case "HTTPSampler.protocol":
 					if inConfigTestElement {
 						defProtocol = val
+					} else {
+						protocolVal = val
 					}
-					protocolVal = val
 				case "HTTPSampler.method":
 					if currentReq != nil {
 						currentReq.Method = val
-					}
-				default:
-					if inUserParameters {
-						if userParamState == "names" {
-							userParamNames = append(userParamNames, val)
-						} else if userParamState == "values" {
-							userParamValues = append(userParamValues, val)
-						}
 					}
 				case "Argument.name":
 					currentArgName = val
@@ -229,7 +225,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						}
 						currentHeaderName = ""
 					}
-				}
+				default:
+					// Handle UserParameters variables
+					if inUserParameters {
+						if userParamState == "names" {
+							userParamNames = append(userParamNames, val)
+						} else if userParamState == "values" {
+							userParamValues = append(userParamValues, val)
+						}
+					}
+			}
 			}
 		}
 	}

@@ -71,7 +71,7 @@ func main() {
 			log.Fatal("-e (export directory) is required when using -g / -report-only")
 		}
 		reporter := jmeter.NewReporter(*jmeterHome)
-		uc := usecase.NewStressTestUsecase(nil, nil, reporter, nil)
+		uc := usecase.NewReportOnlyUsecase(reporter)
 		err := uc.GenerateReportOnly(*reportOnly, *reportDir)
 		if err != nil {
 			log.Fatalf("Report generation failed: %v", err)
@@ -103,6 +103,9 @@ func main() {
 	if finalResultBin == "" {
 		_ = os.MkdirAll("results", 0755)
 		finalResultBin = filepath.Join("results", "result_"+timestamp+".bin")
+	} else {
+		// Ensure parent directories exist for custom result file path
+		_ = os.MkdirAll(filepath.Dir(finalResultBin), 0755)
 	}
 
 	var finalReportDir string
