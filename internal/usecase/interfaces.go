@@ -8,6 +8,7 @@ import (
 
 type StressTestUsecase interface {
 	Execute(ctx context.Context, config *domain.TestConfig) error
+	GenerateReportOnly(binPath string, reportDirPath string) error
 }
 
 type JmxParser interface {

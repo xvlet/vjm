@@ -49,17 +49,35 @@ func main() {
 	var propFiles multiFlag
 	flag.Var(&propFiles, "p", "Properties file (can be specified multiple times)")
 
+	reportOnly := flag.String("report-only", "", "Generate report only from an existing .bin file")
+	flag.StringVar(reportOnly, "g", "", "Generate report only (alias for -report-only)")
+
 	flag.Usage = func() {
 		fmt.Println("Vegeta JMeter Engine (vjm) v1.0")
 		fmt.Println("A high-performance HTTP load testing tool bridging JMeter templates and Vegeta core.")
 		fmt.Println()
 		fmt.Println("Usage: vjm -t <plan.jmx> [-p props1.properties] [-p props2.properties] -r 3000 -d 60s")
+		fmt.Println("       vjm -g <result.bin> -e <report_dir>")
 		fmt.Println()
 		fmt.Println("Options:")
 		flag.PrintDefaults()
 	}
 
 	flag.Parse()
+
+	// 1. Check if it's report-only mode
+	if *reportOnly != "" {
+		if *reportDir == "" {
+			log.Fatal("-e (export directory) is required when using -g / -report-only")
+		}
+		reporter := jmeter.NewReporter(*jmeterHome)
+		uc := usecase.NewStressTestUsecase(nil, nil, reporter, nil)
+		err := uc.GenerateReportOnly(*reportOnly, *reportDir)
+		if err != nil {
+			log.Fatalf("Report generation failed: %v", err)
+		}
+		os.Exit(0)
+	}
 
 	if *jmxPath == "" {
 		flag.Usage()

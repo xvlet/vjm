@@ -66,3 +66,35 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 	log.Println("[Usecase] Stress Test flow completed successfully!")
 	return nil
 }
+
+func (u *defaultStressTestUsecase) GenerateReportOnly(inputPath string, reportDirPath string) error {
+	isJtl := len(inputPath) > 4 && inputPath[len(inputPath)-4:] == ".jtl"
+	jtlPath := inputPath
+
+	if !isJtl {
+		if len(inputPath) > 4 && inputPath[len(inputPath)-4:] == ".bin" {
+			jtlPath = inputPath[:len(inputPath)-4] + ".jtl"
+		} else {
+			jtlPath = inputPath + ".jtl"
+		}
+
+		log.Printf("[Usecase] Converting Bin (%s) to JTL (%s)...", inputPath, jtlPath)
+		err := u.reporter.ConvertToJTL(inputPath, jtlPath)
+		if err != nil {
+			return fmt.Errorf("JTL conversion failed: %w", err)
+		}
+	} else {
+		log.Printf("[Usecase] JTL file provided directly (%s), skipping bin conversion.", jtlPath)
+	}
+
+	if reportDirPath != "" {
+		log.Printf("[Usecase] Generating HTML Report to %s...", reportDirPath)
+		err := u.reporter.GenerateHTML(jtlPath, reportDirPath, 1000)
+		if err != nil {
+			return fmt.Errorf("HTML report generation failed: %w", err)
+		}
+	}
+
+	log.Println("[Usecase] Report generation flow completed successfully!")
+	return nil
+}
