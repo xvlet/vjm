@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"vjm/internal/domain"
-	"vjm/internal/evaluator"
+	"github.com/xvlet/vjm/internal/domain"
+	"github.com/xvlet/vjm/internal/evaluator"
 )
 
 type defaultStressTestUsecase struct {

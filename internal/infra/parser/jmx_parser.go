@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
-	"vjm/internal/domain"
+	"github.com/xvlet/vjm/internal/domain"
 )
 
 // DefaultJmxParser parses JMeter JMX XML files to extract the primary HTTP Request configuration.

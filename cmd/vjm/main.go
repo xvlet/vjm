@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"vjm/internal/domain"
-	"vjm/internal/evaluator"
-	"vjm/internal/infra/jmeter"
-	"vjm/internal/infra/parser"
-	"vjm/internal/infra/vegeta"
-	"vjm/internal/usecase"
+	"github.com/xvlet/vjm/internal/domain"
+	"github.com/xvlet/vjm/internal/evaluator"
+	"github.com/xvlet/vjm/internal/infra/jmeter"
+	"github.com/xvlet/vjm/internal/infra/parser"
+	"github.com/xvlet/vjm/internal/infra/vegeta"
+	"github.com/xvlet/vjm/internal/usecase"
 )
 
 // multiFlag allows a flag to be specified multiple times
