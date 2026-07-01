@@ -1,5 +1,14 @@
 package domain
 
+// SteppingConfig represents the properties of a SteppingThreadGroup.
+type SteppingConfig struct {
+	InitialDelay  string
+	StepRate      string
+	StepDuration  string
+	MaxRate       string
+	HoldDuration  string
+}
+
 // TestPlan represents the top-level JMeter test plan
 type TestPlan struct {
 	Name                 string
@@ -12,11 +21,12 @@ type TestPlan struct {
 // These will be leveraged in a future enhancement to support stepped load (e.g. SteppingThreadGroup)
 // by running Vegeta in multiple stages and merging the results.
 type ThreadGroup struct {
-	Name       string
-	NumThreads int // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
-	RampUp     int // TODO: seconds to ramp up to full load
-	Duration   int // TODO: total duration per step
-	Samplers   []*Sampler
+	Name           string
+	NumThreads     int // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
+	RampUp         int // TODO: seconds to ramp up to full load
+	Duration       int // TODO: total duration per step
+	Samplers       []*Sampler
+	SteppingConfig *SteppingConfig
 }
 
 // Sampler represents a JMeter HTTP Sampler

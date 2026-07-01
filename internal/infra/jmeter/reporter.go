@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Reporter struct {
@@ -25,7 +26,13 @@ func (r *Reporter) PrintReport(binPath string) error {
 		return fmt.Errorf("vegeta command not found: %w", err)
 	}
 
-	cmd := exec.Command(vegetaPath, "report", binPath)
+	args := []string{"report"}
+	for _, p := range strings.Split(binPath, ",") {
+		if strings.TrimSpace(p) != "" {
+			args = append(args, strings.TrimSpace(p))
+		}
+	}
+	cmd := exec.Command(vegetaPath, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -43,7 +50,13 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 		return fmt.Errorf("vegeta command not found: %w", err)
 	}
 
-	cmd := exec.Command(vegetaPath, "encode", "-to", "csv", binPath)
+	args := []string{"encode", "-to", "csv"}
+	for _, p := range strings.Split(binPath, ",") {
+		if strings.TrimSpace(p) != "" {
+			args = append(args, strings.TrimSpace(p))
+		}
+	}
+	cmd := exec.Command(vegetaPath, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err

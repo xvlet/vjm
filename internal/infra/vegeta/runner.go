@@ -7,7 +7,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
+
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
 )
@@ -32,8 +35,12 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	}
 
 	totalSamplers := 0
+	var steppingCfg *domain.SteppingConfig
 	for _, tg := range plan.ThreadGroups {
 		totalSamplers += len(tg.Samplers)
+		if tg.SteppingConfig != nil && steppingCfg == nil {
+			steppingCfg = tg.SteppingConfig
+		}
 	}
 	if totalSamplers == 0 {
 		return fmt.Errorf("no HTTP requests found in thread groups")
@@ -44,13 +51,95 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		return fmt.Errorf("vegeta command not found: %w", err)
 	}
 
+	// Remove result file if exists to start fresh
+	_ = os.Remove(config.ResultBinPath)
+
+	if steppingCfg != nil && !config.ForceCLI {
+		return r.runStepping(ctx, plan, config, eval, vegetaPath, steppingCfg)
+	}
+
+	if steppingCfg != nil && config.ForceCLI {
+		log.Printf("[VegetaRunner] -force-cli flag enabled. Ignoring Thread Group config and using Rate=%d, Duration=%s", config.Rate, config.Duration)
+	}
+
+	return r.runSingle(ctx, plan, config, eval, vegetaPath, config.Rate, config.Duration)
+}
+
+func (r *Runner) runStepping(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator, vegetaPath string, stepCfg *domain.SteppingConfig) error {
+	// Evaluate strings to ints
+	maxRate, _ := strconv.Atoi(eval.Evaluate(stepCfg.MaxRate))
+	stepRate, _ := strconv.Atoi(eval.Evaluate(stepCfg.StepRate))
+	
+	initDelaySec, _ := strconv.Atoi(eval.Evaluate(stepCfg.InitialDelay))
+	stepDurSec, _ := strconv.Atoi(eval.Evaluate(stepCfg.StepDuration))
+	holdDurSec, _ := strconv.Atoi(eval.Evaluate(stepCfg.HoldDuration))
+
+	log.Printf("[VegetaRunner] Found SteppingThreadGroup config. MaxRate: %d, StepRate: %d", maxRate, stepRate)
+
+	if initDelaySec > 0 {
+		log.Printf("[VegetaRunner] Initial delay for %ds", initDelaySec)
+		select {
+		case <-time.After(time.Duration(initDelaySec) * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	currentRate := 0
+	if stepRate <= 0 {
+		stepRate = maxRate // Prevent infinite loop if 0
+	}
+
+	var binPaths []string
+	stepIndex := 1
+	baseBinPath := config.ResultBinPath
+
+	for currentRate < maxRate {
+		currentRate += stepRate
+		if currentRate > maxRate {
+			currentRate = maxRate
+		}
+
+		durationStr := fmt.Sprintf("%ds", stepDurSec)
+		log.Printf("[VegetaRunner] --- Stepping: Running at %d TPS for %s ---", currentRate, durationStr)
+		
+		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
+		binPaths = append(binPaths, stepBinPath)
+		config.ResultBinPath = stepBinPath
+
+		err := r.runSingle(ctx, plan, config, eval, vegetaPath, currentRate, durationStr)
+		if err != nil {
+			return err
+		}
+		stepIndex++
+	}
+
+	if holdDurSec > 0 {
+		durationStr := fmt.Sprintf("%ds", holdDurSec)
+		log.Printf("[VegetaRunner] --- Stepping: Holding Max Rate %d TPS for %s ---", maxRate, durationStr)
+
+		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
+		binPaths = append(binPaths, stepBinPath)
+		config.ResultBinPath = stepBinPath
+
+		err := r.runSingle(ctx, plan, config, eval, vegetaPath, maxRate, durationStr)
+		if err != nil {
+			return err
+		}
+	}
+
+	config.ResultBinPath = strings.Join(binPaths, ",")
+	return nil
+}
+
+func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator, vegetaPath string, rate int, duration string) error {
 	args := []string{
 		"attack",
 		"-format=json",
 		"-targets=stdin",
 		"-lazy=true",
-		"-rate", fmt.Sprintf("%d", config.Rate),
-		"-duration", config.Duration,
+		"-rate", fmt.Sprintf("%d", rate),
+		"-duration", duration,
 		"-keepalive=true",
 	}
 	if config.Workers > 0 {
@@ -64,19 +153,16 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		return fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 
-	outFile, err := os.Create(config.ResultBinPath)
+	// Open in TRUNC mode so it starts fresh (we no longer append gob streams)
+	outFile, err := os.OpenFile(config.ResultBinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to create result file: %w", err)
+		return fmt.Errorf("failed to open result file: %w", err)
 	}
 	defer func() { _ = outFile.Close() }()
-	
+
 	cmd.Stdout = outFile
 	cmd.Stderr = os.Stderr
 
-	log.Println("[VegetaRunner] Starting vegeta attack...")
-	log.Printf("[VegetaRunner] Rate     : %d TPS", config.Rate)
-	log.Printf("[VegetaRunner] Duration : %s", config.Duration)
-	log.Printf("[VegetaRunner] Workers  : %d", config.Workers)
 	attackStart := time.Now()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start vegeta: %w", err)
@@ -90,8 +176,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		}()
 		defer func() { _ = stdin.Close() }()
 		encoder := json.NewEncoder(stdin)
-		
-		var count int
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -103,7 +188,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 						if reqTemplate == nil {
 							continue
 						}
-						
+
 						evalURL := eval.Evaluate(reqTemplate.URL)
 						evalBody := eval.Evaluate(reqTemplate.BodyTemplate)
 						evalHeaders := make(map[string][]string)
@@ -120,16 +205,6 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 							target.Body = []byte(evalBody)
 						}
 
-						if count == 0 {
-							log.Printf("[DEBUG] Method=%s", target.Method)
-							log.Printf("[DEBUG] URL=%s", target.URL)
-							for hk, hv := range target.Header {
-								log.Printf("[DEBUG] Header [%s] = %s", hk, hv[0])
-							}
-							log.Printf("[DEBUG] BodyLen=%d", len(target.Body))
-						}
-						count++
-
 						if err := encoder.Encode(target); err != nil {
 							// Broken pipe means vegeta closed stdin (finished)
 							return
@@ -142,11 +217,8 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 
 	err = cmd.Wait()
 	elapsed := time.Since(attackStart).Round(time.Millisecond)
-	log.Printf("[VegetaRunner] Attack completed in %s. Results saved to %s", elapsed, config.ResultBinPath)
+	log.Printf("[VegetaRunner] Step completed in %s.", elapsed)
 	if err != nil {
-		// Remove incomplete result file to avoid corrupting future report runs
-		_ = outFile.Close()
-		_ = os.Remove(config.ResultBinPath)
 		return fmt.Errorf("vegeta attack failed: %w", err)
 	}
 	return nil

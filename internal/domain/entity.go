@@ -10,6 +10,7 @@ type TestConfig struct {
 	ResultBinPath  string
 	ResultJtlPath  string
 	ReportDirPath  string
+	ForceCLI       bool
 }
 
 // RequestTemplate represents the extracted HTTP request information from the JMX file
