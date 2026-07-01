@@ -5,7 +5,7 @@
 <h1 align="center">⚡ vjm — Vegeta-JMeter Engine</h1>
 
 <p align="center">
-  <b>Harness the immense power of Vegeta with your JMeter Test Plans.</b><br>
+  <b>Harness the power of Vegeta with your JMeter Test Plans.</b><br>
   Write with JMeter. Attack with Vegeta. Report with JMeter.
 </p>
 
@@ -40,14 +40,14 @@ flowchart LR
 ## Key Features
 
 <table>
-<tr><td><b>🗂️ Full JMX Parsing</b></td><td>Supports parsing of HTTPSamplerProxy, HeaderManager, ThreadGroup, UserDefinedVariables, UserParameters, and HTTP Request Defaults (ConfigTestElement) in JMeter <code>.jmx</code> files.</td></tr>
-<tr><td><b>🔧 JMeter Function Evaluation</b></td><td>Supports built-in functions like <code>${__time(...)}</code>, <code>${__RandomString(...)}</code>, <code>${__P(...)}</code>, <code>${__eval(...)}</code>, <code>${__FileToString(...)}</code>, etc.</td></tr>
-<tr><td><b>⚡ Vegeta-based Load Generation</b></td><td>Utilizes the Vegeta engine, capable of handling thousands of TPS. Precise control via <code>-r</code> (Rate), <code>-d</code> (Duration), and <code>-w</code> (Workers) parameters.</td></tr>
-<tr><td><b>📊 Automatic JTL Conversion</b></td><td>Automatically converts Vegeta's binary results (<code>.bin</code>) into JMeter-readable CSV JTL format.</td></tr>
-<tr><td><b>📋 JMeter HTML Reports</b></td><td>Automatically generates JMeter dashboard HTML reports using the converted JTL.</td></tr>
-<tr><td><b>🔁 Report-Only Mode</b></td><td>Regenerate reports independently at any time using existing <code>.bin</code> or <code>.jtl</code> files.</td></tr>
-<tr><td><b>📦 Single Binary Distribution</b></td><td>CGO disabled, no external library dependencies. Supports cross-compilation for Linux (amd64) and AIX (ppc64).</td></tr>
-<tr><td><b>🧩 .properties File Support</b></td><td>Easily manage environment-specific parameters by specifying multiple JMeter-style <code>.properties</code> files.</td></tr>
+<tr><td><b>JMX Parsing</b></td><td>Supports parsing of HTTPSamplerProxy, HeaderManager, ThreadGroup, UserDefinedVariables, UserParameters, and HTTP Request Defaults (ConfigTestElement) in JMeter <code>.jmx</code> files.</td></tr>
+<tr><td><b>JMeter Function Evaluation</b></td><td>Supports built-in functions like <code>${__time(...)}</code>, <code>${__RandomString(...)}</code>, <code>${__P(...)}</code>, <code>${__eval(...)}</code>, <code>${__FileToString(...)}</code>, etc.</td></tr>
+<tr><td><b>Vegeta-based Load Generation</b></td><td>Utilizes the Vegeta engine, capable of handling thousands of TPS. Precise control via <code>-r</code> (Rate), <code>-d</code> (Duration), and <code>-w</code> (Workers) parameters.</td></tr>
+<tr><td><b>Automatic JTL Conversion</b></td><td>Automatically converts Vegeta's binary results (<code>.bin</code>) into JMeter-readable CSV JTL format.</td></tr>
+<tr><td><b>JMeter HTML Reports</b></td><td>Automatically generates JMeter dashboard HTML reports using the converted JTL.</td></tr>
+<tr><td><b>Report-Only Mode</b></td><td>Regenerate reports independently at any time using existing <code>.bin</code> or <code>.jtl</code> files.</td></tr>
+<tr><td><b>Single Binary Distribution</b></td><td>CGO disabled, no external library dependencies. Supports cross-compilation for Linux (amd64) and AIX (ppc64).</td></tr>
+<tr><td><b>.properties File Support</b></td><td>Easily manage environment-specific parameters by specifying multiple JMeter-style <code>.properties</code> files.</td></tr>
 </table>
 
 ---

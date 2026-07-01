@@ -5,7 +5,7 @@
 <h1 align="center">⚡ vjm — Vegeta-JMeter Engine</h1>
 
 <p align="center">
-  <b>JMeter 테스트 플랜으로 Vegeta의 압도적인 성능을 그대로 활용하세요.</b><br>
+  <b>JMeter 테스트 플랜으로 Vegeta의 성능을 그대로 활용하세요.</b><br>
   Write with JMeter. Attack with Vegeta. Report with JMeter.
 </p>
 
@@ -39,14 +39,14 @@ flowchart LR
 ## 주요 기능
 
 <table>
-<tr><td><b>🗂️ JMX 완전 파싱</b></td><td>JMeter <code>.jmx</code> 파일의 HTTPSamplerProxy, HeaderManager, ThreadGroup, UserDefinedVariables, UserParameters, HTTP Request Defaults(ConfigTestElement) 파싱 지원</td></tr>
-<tr><td><b>🔧 JMeter 함수 평가</b></td><td><code>${__time(...)}</code>, <code>${__RandomString(...)}</code>, <code>${__P(...)}</code>, <code>${__eval(...)}</code>, <code>${__FileToString(...)}</code> 등 내장 함수 지원</td></tr>
-<tr><td><b>⚡ Vegeta 기반 부하 발생</b></td><td>초당 수천 TPS를 처리하는 Vegeta 엔진을 사용. <code>-r</code> (Rate), <code>-d</code> (Duration), <code>-w</code> (Workers) 파라미터로 정밀 제어</td></tr>
-<tr><td><b>📊 JTL 자동 변환</b></td><td>Vegeta 결과(binary <code>.bin</code>)를 JMeter가 읽을 수 있는 CSV JTL 포맷으로 자동 변환</td></tr>
-<tr><td><b>📋 JMeter HTML 리포트</b></td><td>변환된 JTL로 JMeter의 대시보드 HTML 리포트를 자동 생성</td></tr>
-<tr><td><b>🔁 리포트 단독 생성 모드</b></td><td>기존 <code>.bin</code> 또는 <code>.jtl</code> 파일로 언제든 리포트만 별도로 재생성 가능</td></tr>
-<tr><td><b>📦 단일 바이너리 배포</b></td><td>CGO 비활성화, 외부 라이브러리 의존성 없음. Linux(amd64)와 AIX(ppc64) 크로스 빌드 지원</td></tr>
-<tr><td><b>🧩 .properties 파일 지원</b></td><td>JMeter 스타일의 <code>.properties</code> 파일을 여러 개 지정하여 환경별 파라미터를 쉽게 관리</td></tr>
+<tr><td><b>JMX 파싱</b></td><td>JMeter <code>.jmx</code> 파일의 HTTPSamplerProxy, HeaderManager, ThreadGroup, UserDefinedVariables, UserParameters, HTTP Request Defaults(ConfigTestElement) 파싱 지원</td></tr>
+<tr><td><b>JMeter 함수 평가</b></td><td><code>${__time(...)}</code>, <code>${__RandomString(...)}</code>, <code>${__P(...)}</code>, <code>${__eval(...)}</code>, <code>${__FileToString(...)}</code> 등 내장 함수 지원</td></tr>
+<tr><td><b>Vegeta 기반 부하 발생</b></td><td>초당 수천 TPS를 처리하는 Vegeta 엔진을 사용. <code>-r</code> (Rate), <code>-d</code> (Duration), <code>-w</code> (Workers) 파라미터로 정밀 제어</td></tr>
+<tr><td><b>JTL 자동 변환</b></td><td>Vegeta 결과(binary <code>.bin</code>)를 JMeter가 읽을 수 있는 CSV JTL 포맷으로 자동 변환</td></tr>
+<tr><td><b>JMeter HTML 리포트</b></td><td>변환된 JTL로 JMeter의 대시보드 HTML 리포트를 자동 생성</td></tr>
+<tr><td><b>리포트 단독 생성 모드</b></td><td>기존 <code>.bin</code> 또는 <code>.jtl</code> 파일로 언제든 리포트만 별도로 재생성 가능</td></tr>
+<tr><td><b>단일 바이너리 배포</b></td><td>CGO 비활성화, 외부 라이브러리 의존성 없음. Linux(amd64)와 AIX(ppc64) 크로스 빌드 지원</td></tr>
+<tr><td><b>.properties 파일 지원</b></td><td>JMeter 스타일의 <code>.properties</code> 파일을 여러 개 지정하여 환경별 파라미터를 쉽게 관리</td></tr>
 </table>
 
 ---
