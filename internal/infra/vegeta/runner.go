@@ -1,12 +1,16 @@
 package vegeta
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -160,8 +164,27 @@ func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *d
 	}
 	defer func() { _ = outFile.Close() }()
 
-	cmd.Stdout = outFile
+	// Wrap outputs in large buffers to minimize syscalls and prevent blocking vegeta attack
+	bufferedOut := bufio.NewWriterSize(outFile, 1024*1024) // 1MB buffer
+	
+	encodeCmd := exec.CommandContext(ctx, vegetaPath, "encode", "-to", "json")
+	encodeStdin, err := encodeCmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	bufferedEncode := bufio.NewWriterSize(encodeStdin, 1024*1024) // 1MB buffer
+
+	encodeStdout, err := encodeCmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+
+	cmd.Stdout = io.MultiWriter(bufferedOut, bufferedEncode)
 	cmd.Stderr = os.Stderr
+
+	if err := encodeCmd.Start(); err != nil {
+		return err
+	}
 
 	attackStart := time.Now()
 	if err := cmd.Start(); err != nil {
@@ -215,11 +238,135 @@ func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *d
 		}
 	}()
 
+	dashboardDone := make(chan struct{})
+	go r.runDashboard(encodeStdout, dashboardDone)
+
 	err = cmd.Wait()
+	bufferedOut.Flush()
+	bufferedEncode.Flush()
+	encodeStdin.Close() // this tells encodeCmd to stop
+	encodeCmd.Wait()
+	<-dashboardDone
+	
 	elapsed := time.Since(attackStart).Round(time.Millisecond)
 	log.Printf("[VegetaRunner] Step completed in %s.", elapsed)
 	if err != nil {
 		return fmt.Errorf("vegeta attack failed: %w", err)
 	}
 	return nil
+}
+
+// fast parsing to avoid encoding/json overhead
+func parseFastJSON(line []byte) (code int, lat int64, hasErr bool) {
+	latIdx := bytes.Index(line, []byte(`"latency":`))
+	if latIdx != -1 {
+		latIdx += 10
+		end := bytes.IndexByte(line[latIdx:], ',')
+		if end != -1 {
+			lat, _ = strconv.ParseInt(string(line[latIdx:latIdx+end]), 10, 64)
+		}
+	}
+	
+	codeIdx := bytes.Index(line, []byte(`"code":`))
+	if codeIdx != -1 {
+		codeIdx += 7
+		end := bytes.IndexByte(line[codeIdx:], ',')
+		if end != -1 {
+			code, _ = strconv.Atoi(string(line[codeIdx:codeIdx+end]))
+		}
+	}
+
+	errIdx := bytes.Index(line, []byte(`"error":"`))
+	if errIdx != -1 {
+		errIdx += 9
+		if errIdx < len(line) && line[errIdx] != '"' {
+			hasErr = true
+		}
+	}
+	if code >= 400 || code == 0 {
+		hasErr = true
+	}
+	return
+}
+
+func (r *Runner) runDashboard(stdout io.Reader, done chan struct{}) {
+	defer close(done)
+
+	var (
+		intervalReqs    int64
+		intervalLatency int64
+		intervalErrors  int64
+		totalReqs       int64
+
+		latencies []float64
+	)
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	lines := make(chan []byte, 5000)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			lines <- append([]byte(nil), scanner.Bytes()...)
+		}
+		close(lines)
+	}()
+
+	startTime := time.Now()
+
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				return
+			}
+			
+			_, lat, hasErr := parseFastJSON(line)
+			intervalReqs++
+			totalReqs++
+			intervalLatency += lat
+			latMs := float64(lat) / 1e6
+			latencies = append(latencies, latMs)
+
+			if hasErr {
+				intervalErrors++
+			}
+
+		case <-ticker.C:
+			iReqs := intervalReqs
+			iLat := intervalLatency
+			iErrs := intervalErrors
+			tReqs := totalReqs
+
+			intervalReqs = 0
+			intervalLatency = 0
+			intervalErrors = 0
+
+			p99 := 0.0
+			maxLat := 0.0
+			if len(latencies) > 0 {
+				sort.Float64s(latencies)
+				maxLat = latencies[len(latencies)-1]
+				p99Idx := int(float64(len(latencies)) * 0.99)
+				if p99Idx >= len(latencies) {
+					p99Idx = len(latencies) - 1
+				}
+				p99 = latencies[p99Idx]
+			}
+			latencies = latencies[:0] // Reset capacity
+
+			tps := float64(iReqs) / 5.0
+			avgLatMs := 0.0
+			errPct := 0.0
+			if iReqs > 0 {
+				avgLatMs = (float64(iLat) / float64(iReqs)) / 1e6
+				errPct = (float64(iErrs) / float64(iReqs)) * 100.0
+			}
+
+			elapsed := time.Since(startTime).Round(time.Second)
+			log.Printf("[Dashboard] %02d:%02d | TPS: %5.1f | Avg: %5.1fms | P99: %5.1fms | Max: %5.1fms | Err: %3.1f%% | TotReq: %d",
+				int(elapsed.Minutes()), int(elapsed.Seconds())%60, tps, avgLatMs, p99, maxLat, errPct, tReqs)
+		}
+	}
 }
