@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
+
 	"github.com/xvlet/vjm/internal/domain"
 )
 
@@ -73,6 +75,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			if strings.HasSuffix(currentTag, "ThreadGroup") {
 				currentThreadGroup = &domain.ThreadGroup{
 					Name: nameAttr,
+				}
+				if currentTag == "kg.apc.jmeter.threads.SteppingThreadGroup" {
+					currentThreadGroup.SteppingConfig = &domain.SteppingConfig{}
 				}
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
@@ -197,6 +202,30 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "HTTPSampler.method":
 					if currentReq != nil {
 						currentReq.Method = val
+					}
+				case "ThreadGroup.num_threads":
+					if currentThreadGroup != nil {
+						v, _ := strconv.Atoi(val)
+						currentThreadGroup.NumThreads = v
+						if currentThreadGroup.SteppingConfig != nil {
+							currentThreadGroup.SteppingConfig.MaxRate = val
+						}
+					}
+				case "Threads initial delay":
+					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
+						currentThreadGroup.SteppingConfig.InitialDelay = val
+					}
+				case "Start users count":
+					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
+						currentThreadGroup.SteppingConfig.StepRate = val
+					}
+				case "Start users period":
+					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
+						currentThreadGroup.SteppingConfig.StepDuration = val
+					}
+				case "flighttime":
+					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
+						currentThreadGroup.SteppingConfig.HoldDuration = val
 					}
 				case "Argument.name":
 					currentArgName = val

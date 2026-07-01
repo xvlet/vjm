@@ -182,6 +182,9 @@ Options:
         기존 .bin 또는 .jtl 파일에서 리포트만 생성.
         -e 옵션과 함께 사용 필수
 
+  -f, -force-cli
+        JMX 파일 내의 Thread Group 설정(Stepping 등)을 무시하고, CLI에 지정된 Rate와 Duration 값을 강제 적용.
+
   -jmeter-home string
         JMETER_HOME 경로. 환경변수 $JMETER_HOME 자동 참조
 ```
@@ -323,7 +326,7 @@ Error Set:
 
 ## 로드맵
 
-- [ ] **SteppingThreadGroup 지원**: JMeter의 계단식 부하 증가 시나리오 구현
+- [x] **SteppingThreadGroup 지원**: JMeter의 계단식 부하 증가 시나리오 구현
 - [ ] **다중 Sampler 지원**: ThreadGroup 내 여러 HTTPSampler를 가중치 기반으로 처리
 - [ ] **JMeter CSV DataSet 지원**: `CSVDataSet`에서 요청별 다른 파라미터 주입
 - [ ] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
