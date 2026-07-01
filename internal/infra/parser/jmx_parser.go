@@ -99,9 +99,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				userParamNames = []string{}
 				userParamValues = []string{}
 			} else if currentTag == "collectionProp" {
-				if nameAttr == "UserParameters.names" {
+				switch nameAttr {
+				case "UserParameters.names":
 					userParamState = "names"
-				} else if nameAttr == "UserParameters.thread_values" {
+				case "UserParameters.thread_values":
 					userParamState = "values"
 				}
 			}
@@ -228,9 +229,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				default:
 					// Handle UserParameters variables
 					if inUserParameters {
-						if userParamState == "names" {
+						switch userParamState {
+						case "names":
 							userParamNames = append(userParamNames, val)
-						} else if userParamState == "values" {
+						case "values":
 							userParamValues = append(userParamValues, val)
 						}
 					}
