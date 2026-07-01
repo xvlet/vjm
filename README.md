@@ -26,16 +26,13 @@
 
 While JMeter is a powerful tool for writing test scenarios, its JVM-based nature limits its performance under massive concurrent connections. `vjm` overcomes this limitation by preserving JMeter's rich ecosystem (GUI, functions, reports) while stably generating thousands of TPS using the Vegeta engine.
 
-```text
-┌─────────────────────┐    Parse      ┌───────────────┐  Load Generate ┌──────────────┐
-│  JMeter .jmx file   │ ──────────▶  │  vjm (Engine) │ ────────────▶ │    Vegeta    │
-│ (Write Test Plan)   │             └───────────────┘               └──────┬───────┘
-└─────────────────────┘                                                     │ .bin Result
-                                                                            ▼
-┌─────────────────────┐ HTML Report   ┌───────────────┐ Convert to JTL ┌──────────────┐
-│  JMeter Dashboard   │ ◀──────────── │     vjm       │ ◀────────── │  .jtl file   │
-│   (View Results)    │               └───────────────┘             └──────────────┘
-└─────────────────────┘
+```mermaid
+flowchart LR
+    A["JMeter .jmx file<br/>(Write Test Plan)"] -->|Parse| B("vjm (Engine)")
+    B -->|Load Generate| C["Vegeta"]
+    C -->|.bin Result| D("vjm")
+    D -->|Convert to JTL| E[".jtl file"]
+    D -->|HTML Report| F["JMeter Dashboard<br/>(View Results)"]
 ```
 
 ---
