@@ -183,6 +183,9 @@ Options:
         Generate a report from an existing .bin or .jtl file.
         Must be used with the -e option
 
+  -f, -force-cli
+        Force CLI rate and duration, ignoring JMX Thread Group configuration (like Stepping configurations).
+
   -jmeter-home string
         JMETER_HOME path. Automatically references the $JMETER_HOME environment variable
 ```
@@ -324,7 +327,7 @@ Error Set:
 
 ## Roadmap
 
-- [ ] **SteppingThreadGroup Support**: Implement JMeter's stepped load increase scenarios
+- [x] **SteppingThreadGroup Support**: Implement JMeter's stepped load increase scenarios
 - [ ] **Multi-Sampler Support**: Handle multiple HTTPSamplers within a ThreadGroup based on weights
 - [ ] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
 - [ ] **WebSocket Support**: Integrate WS protocol load testing

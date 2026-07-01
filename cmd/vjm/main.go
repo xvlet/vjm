@@ -52,6 +52,9 @@ func main() {
 	reportOnly := flag.String("report-only", "", "Generate report only from an existing .bin file")
 	flag.StringVar(reportOnly, "g", "", "Generate report only (alias for -report-only)")
 
+	forceCLI := flag.Bool("force-cli", false, "Force CLI rate and duration, ignoring JMX Thread Group configuration")
+	flag.BoolVar(forceCLI, "f", false, "Force CLI rate (alias for -force-cli)")
+
 	flag.Usage = func() {
 		fmt.Println("Vegeta JMeter Engine (vjm) v1.0")
 		fmt.Println("A high-performance HTTP load testing tool bridging JMeter templates and Vegeta core.")
@@ -76,6 +79,8 @@ func main() {
 		fmt.Println("        HTML Report output directory")
 		fmt.Println("  -g, -report-only string")
 		fmt.Println("        Generate report only from an existing .bin file")
+		fmt.Println("  -f, -force-cli")
+		fmt.Println("        Force CLI rate and duration, ignoring JMX Thread Group configuration")
 		fmt.Printf("  -jmeter-home string\n        JMETER_HOME path (default %q)\n", os.Getenv("JMETER_HOME"))
 	}
 
@@ -138,6 +143,7 @@ func main() {
 		ResultBinPath: finalResultBin,
 		ResultJtlPath: strings.TrimSuffix(finalResultBin, ".bin") + ".jtl",
 		ReportDirPath: finalReportDir,
+		ForceCLI:      *forceCLI,
 	}
 
 	// 2. DI Setup
