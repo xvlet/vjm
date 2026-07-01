@@ -21,4 +21,5 @@ type VegetaRunner interface {
 type JmeterReporter interface {
 	ConvertToJTL(binPath, jtlPath string) error
 	GenerateHTML(jtlPath, reportDir string, granularity int) error
+	PrintReport(binPath string) error
 }

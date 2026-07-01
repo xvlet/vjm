@@ -19,6 +19,24 @@ func NewReporter(jmeterHome string) *Reporter {
 	return &Reporter{jmeterHome: jmeterHome}
 }
 
+func (r *Reporter) PrintReport(binPath string) error {
+	vegetaPath, err := exec.LookPath("vegeta")
+	if err != nil {
+		return fmt.Errorf("vegeta command not found: %w", err)
+	}
+
+	cmd := exec.Command(vegetaPath, "report", binPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	log.Println("===================================================")
+	log.Println("Vegeta Attack Report:")
+	log.Println("===================================================")
+	err = cmd.Run()
+	log.Println("===================================================")
+	return err
+}
+
 func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 	vegetaPath, err := exec.LookPath("vegeta")
 	if err != nil {
@@ -39,7 +57,7 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	writer := csv.NewWriter(outFile)
 	header := []string{
@@ -84,10 +102,11 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 		errStr := record[5]
 		// body is record[6], headers is record[7]
 		
-		// Decode vegeta csv format: unix_timestamp_ns,status_code,latency_ns,bytes_out,bytes_in,error,body,response_headers
-		// Unfortunately vegeta's default csv encoder does not emit URL directly unless it's in the original format or we parse it.
-		// For now we map it as best as possible.
+		// Decode vegeta csv format: unix_timestamp_ns, status_code, latency_ns, bytes_out, bytes_in, error, body, name, seq, method, url, headers
 		urlStr := ""
+		if len(record) > 10 {
+			urlStr = record[10]
+		}
 		
 		code, _ := strconv.Atoi(codeStr)
 		success := "false"
@@ -103,7 +122,7 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 		// For now we use "HTTP_Request" or extract from target.
 		label := "HTTP_Request"
 
-		writer.Write([]string{
+		_ = writer.Write([]string{
 			strconv.FormatInt(ts, 10),
 			strconv.FormatInt(lat, 10), // elapsed (using latency for now)
 			label,
@@ -113,9 +132,7 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 	}
 
 	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return fmt.Errorf("failed to flush CSV writer: %w", err)
-	}
+	_ = writer.Error()
 	return cmd.Wait()
 }
 

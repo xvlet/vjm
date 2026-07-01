@@ -12,6 +12,7 @@ import (
 // DefaultEvaluator processes JMeter variables and functions
 type DefaultEvaluator struct {
 	properties map[string]string
+	variables  map[string]string
 	regex      *regexp.Regexp
 }
 
@@ -21,6 +22,7 @@ func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
 	}
 	return &DefaultEvaluator{
 		properties: props,
+		variables:  make(map[string]string),
 		// Matches ${...} non-greedily. Nested ${} is handled via recursive evaluation.
 		regex: regexp.MustCompile(`\$\{([^}]+)\}`),
 	}
@@ -30,6 +32,13 @@ func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
 func (e *DefaultEvaluator) AddProperties(props map[string]string) {
 	for k, v := range props {
 		e.properties[k] = v
+	}
+}
+
+// AddVariables merges additional variables into the evaluator
+func (e *DefaultEvaluator) AddVariables(vars map[string]string) {
+	for k, v := range vars {
+		e.variables[k] = v
 	}
 }
 
@@ -66,6 +75,11 @@ func (e *DefaultEvaluator) evaluateInner(inner string) string {
 	}
 
 	// It's a Variable
+	if val, ok := e.variables[inner]; ok {
+		return val
+	}
+	
+	// Fallback to property if variable not found
 	if val, ok := e.properties[inner]; ok {
 		return val
 	}
@@ -133,7 +147,7 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 		fileName := args[0]
 		content, err := os.ReadFile(fileName)
 		if err == nil {
-			return string(content)
+			return strings.ReplaceAll(string(content), "\r", "")
 		}
 		return ""
 

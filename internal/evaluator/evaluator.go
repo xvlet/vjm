@@ -4,4 +4,5 @@ package evaluator
 type Evaluator interface {
 	Evaluate(template string) string
 	AddProperties(props map[string]string)
+	AddVariables(vars map[string]string)
 }

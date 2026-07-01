@@ -36,13 +36,17 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 	}
 
 	if plan.UserDefinedVariables != nil {
-		u.evaluator.AddProperties(plan.UserDefinedVariables)
+		u.evaluator.AddVariables(plan.UserDefinedVariables)
 	}
 
 	log.Println("[Usecase] Executing Vegeta Load Test...")
 	err = u.runner.Run(ctx, plan, config, u.evaluator)
 	if err != nil {
 		return fmt.Errorf("vegeta run failed: %w", err)
+	}
+
+	if err := u.reporter.PrintReport(config.ResultBinPath); err != nil {
+		log.Printf("[Usecase] Warning: Failed to print vegeta report: %v", err)
 	}
 
 	log.Println("[Usecase] Converting Bin to JTL...")

@@ -30,6 +30,14 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		return fmt.Errorf("test plan is empty or has no thread groups")
 	}
 
+	totalSamplers := 0
+	for _, tg := range plan.ThreadGroups {
+		totalSamplers += len(tg.Samplers)
+	}
+	if totalSamplers == 0 {
+		return fmt.Errorf("no HTTP requests found in thread groups")
+	}
+
 	vegetaPath, err := exec.LookPath("vegeta")
 	if err != nil {
 		return fmt.Errorf("vegeta command not found: %w", err)
@@ -59,12 +67,15 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	if err != nil {
 		return fmt.Errorf("failed to create result file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 	
 	cmd.Stdout = outFile
 	cmd.Stderr = os.Stderr
 
-	log.Printf("[VegetaRunner] Starting vegeta attack at %d TPS for %s (Workers: %d)", config.Rate, config.Duration, config.Workers)
+	log.Println("[VegetaRunner] Starting vegeta attack...")
+	log.Printf("[VegetaRunner] Rate     : %d TPS", config.Rate)
+	log.Printf("[VegetaRunner] Duration : %s", config.Duration)
+	log.Printf("[VegetaRunner] Workers  : %d", config.Workers)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start vegeta: %w", err)
 	}
@@ -75,9 +86,10 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 				log.Printf("[VegetaRunner] Panic in generation goroutine: %v", r)
 			}
 		}()
-		defer stdin.Close()
+		defer func() { _ = stdin.Close() }()
 		encoder := json.NewEncoder(stdin)
 		
+		var count int
 		for {
 			select {
 			case <-ctx.Done():
@@ -105,6 +117,16 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 						if evalBody != "" {
 							target.Body = []byte(evalBody)
 						}
+
+						if count == 0 {
+							log.Printf("[DEBUG] Method=%s", target.Method)
+							log.Printf("[DEBUG] URL=%s", target.URL)
+							for hk, hv := range target.Header {
+								log.Printf("[DEBUG] Header [%s] = %s", hk, hv[0])
+							}
+							log.Printf("[DEBUG] BodyLen=%d", len(target.Body))
+						}
+						count++
 
 						if err := encoder.Encode(target); err != nil {
 							// Broken pipe means vegeta closed stdin (finished)
