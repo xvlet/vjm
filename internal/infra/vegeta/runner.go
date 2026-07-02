@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/xvlet/vjm/internal/domain"
@@ -290,71 +292,67 @@ func parseFastJSON(line []byte) (code int, lat int64, hasErr bool) {
 }
 
 func (r *Runner) runDashboard(stdout io.Reader, done chan struct{}) {
-	defer close(done)
-
 	var (
-		intervalReqs    int64
-		intervalLatency int64
-		intervalErrors  int64
-		totalReqs       int64
-
-		latencies []float64
+		intervalReqs    atomic.Int64
+		intervalLatency atomic.Int64
+		intervalErrors  atomic.Int64
+		totalReqs       atomic.Int64
 	)
-
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	lines := make(chan []byte, 5000)
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			lines <- append([]byte(nil), scanner.Bytes()...)
-		}
-		close(lines)
-	}()
+	var mu sync.Mutex
+	latencies := make([]float64, 0, 10000)
 
 	startTime := time.Now()
+	ticker := time.NewTicker(5 * time.Second)
+
+	go func() {
+		defer close(done)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			_, lat, hasErr := parseFastJSON(scanner.Bytes())
+
+			intervalReqs.Add(1)
+			totalReqs.Add(1)
+			intervalLatency.Add(lat)
+
+			latMs := float64(lat) / 1e6
+			mu.Lock()
+			latencies = append(latencies, latMs)
+			mu.Unlock()
+
+			if hasErr {
+				intervalErrors.Add(1)
+			}
+		}
+	}()
 
 	for {
 		select {
-		case line, ok := <-lines:
-			if !ok {
-				return
-			}
-			
-			_, lat, hasErr := parseFastJSON(line)
-			intervalReqs++
-			totalReqs++
-			intervalLatency += lat
-			latMs := float64(lat) / 1e6
-			latencies = append(latencies, latMs)
-
-			if hasErr {
-				intervalErrors++
-			}
-
+		case <-done:
+			ticker.Stop()
+			return
 		case <-ticker.C:
-			iReqs := intervalReqs
-			iLat := intervalLatency
-			iErrs := intervalErrors
-			tReqs := totalReqs
+			iReqs := intervalReqs.Swap(0)
+			iLat := intervalLatency.Swap(0)
+			iErrs := intervalErrors.Swap(0)
+			tReqs := totalReqs.Load()
 
-			intervalReqs = 0
-			intervalLatency = 0
-			intervalErrors = 0
+			var currentLatencies []float64
+			mu.Lock()
+			currentLatencies = latencies
+			latencies = make([]float64, 0, 10000)
+			mu.Unlock()
 
 			p99 := 0.0
 			maxLat := 0.0
-			if len(latencies) > 0 {
-				sort.Float64s(latencies)
-				maxLat = latencies[len(latencies)-1]
-				p99Idx := int(float64(len(latencies)) * 0.99)
-				if p99Idx >= len(latencies) {
-					p99Idx = len(latencies) - 1
+			if len(currentLatencies) > 0 {
+				sort.Float64s(currentLatencies)
+				maxLat = currentLatencies[len(currentLatencies)-1]
+				p99Idx := int(float64(len(currentLatencies)) * 0.99)
+				if p99Idx >= len(currentLatencies) {
+					p99Idx = len(currentLatencies) - 1
 				}
-				p99 = latencies[p99Idx]
+				p99 = currentLatencies[p99Idx]
 			}
-			latencies = latencies[:0] // Reset capacity
 
 			tps := float64(iReqs) / 5.0
 			avgLatMs := 0.0
