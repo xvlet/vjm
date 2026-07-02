@@ -121,6 +121,10 @@ GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o vjm
 
 # Specify custom result file path
 ./vjm -t my_test.jmx -r 1000 -d 10s -l ./results/my_result.bin
+
+# Force CLI rate, duration, and worker options, ignoring JMX Thread Group configuration
+# (e.g., Useful for overriding Stepping Thread Group scenarios to forcefully apply CLI options)
+./vjm -t my_test.jmx -r 2000 -d 30s -w 100 -f
 ```
 
 ### 2. Run Load Test + Generate HTML Report

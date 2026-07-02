@@ -120,6 +120,10 @@ GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o vjm
 
 # 결과 파일 경로를 직접 지정
 ./vjm -t my_test.jmx -r 1000 -d 10s -l ./results/my_result.bin
+
+# JMX Thread Group 설정을 무시하고 CLI에서 지정한 rate, duration, worker 옵션으로 강제 실행
+# (예: Stepping Thread Group 등으로 작성된 my_test.jmx의 시나리오를 무시하고 단일 부하를 주입할 때 유용)
+./vjm -t my_test.jmx -r 2000 -d 30s -w 100 -f
 ```
 
 ### 2. 부하 테스트 + HTML 리포트 동시 생성
