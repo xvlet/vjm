@@ -68,22 +68,13 @@ Because `vjm` translates JMeter's **Thread-based, sequential state** model into 
 
 ## Prerequisites
 
-The following tools must be installed on the machine running `vjm`.
+`vjm` is a statically compiled Go binary with **no external dependencies required** to run a load test.
 
 | Tool | Purpose | Installation Check |
 |------|---------|-------------------|
-| [Vegeta](https://github.com/tsenart/vegeta) | HTTP load generation engine | `vegeta -version` |
 | [Apache JMeter](https://jmeter.apache.org/) | HTML report generation (Optional) | `$JMETER_HOME/bin/jmeter -v` |
 
-```bash
-# Example: Installing Vegeta (Linux)
-go install github.com/tsenart/vegeta@latest
-
-# Or download the binary directly from GitHub Releases
-# https://github.com/tsenart/vegeta/releases
-```
-
-> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself.
+> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself. Vegeta is embedded directly into the `vjm` engine.
 
 ---
 

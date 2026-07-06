@@ -2,15 +2,12 @@ package vegeta
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
+	"math/rand/v2"
+	"net/http"
 	"os"
-	"os/exec"
-	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,19 +15,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
 )
 
-type Target struct {
-	Method string              `json:"method"`
-	URL    string              `json:"url"`
-	Body   []byte              `json:"body,omitempty"`
-	Header map[string][]string `json:"header,omitempty"`
-}
-
-type Runner struct {
-}
+type Runner struct{}
 
 func NewRunner() *Runner {
 	return &Runner{}
@@ -53,27 +43,21 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		return fmt.Errorf("no HTTP requests found in thread groups")
 	}
 
-	vegetaPath, err := exec.LookPath("vegeta")
-	if err != nil {
-		return fmt.Errorf("vegeta command not found: %w", err)
-	}
-
 	// Remove result file if exists to start fresh
 	_ = os.Remove(config.ResultBinPath)
 
 	if steppingCfg != nil && !config.ForceCLI {
-		return r.runStepping(ctx, plan, config, eval, vegetaPath, steppingCfg)
+		return r.runStepping(ctx, plan, config, eval, steppingCfg)
 	}
 
 	if steppingCfg != nil && config.ForceCLI {
 		log.Printf("[VegetaRunner] -force-cli flag enabled. Ignoring Thread Group config and using Rate=%d, Duration=%s", config.Rate, config.Duration)
 	}
 
-	return r.runSingle(ctx, plan, config, eval, vegetaPath, config.Rate, config.Duration)
+	return r.runSingle(ctx, plan, config, eval, config.Rate, config.Duration)
 }
 
-func (r *Runner) runStepping(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator, vegetaPath string, stepCfg *domain.SteppingConfig) error {
-	// Evaluate strings to ints
+func (r *Runner) runStepping(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator, stepCfg *domain.SteppingConfig) error {
 	maxRate, _ := strconv.Atoi(eval.Evaluate(stepCfg.MaxRate))
 	stepRate, _ := strconv.Atoi(eval.Evaluate(stepCfg.StepRate))
 	
@@ -94,7 +78,7 @@ func (r *Runner) runStepping(ctx context.Context, plan *domain.TestPlan, config 
 
 	currentRate := 0
 	if stepRate <= 0 {
-		stepRate = maxRate // Prevent infinite loop if 0
+		stepRate = maxRate
 	}
 
 	var binPaths []string
@@ -114,7 +98,7 @@ func (r *Runner) runStepping(ctx context.Context, plan *domain.TestPlan, config 
 		binPaths = append(binPaths, stepBinPath)
 		config.ResultBinPath = stepBinPath
 
-		err := r.runSingle(ctx, plan, config, eval, vegetaPath, currentRate, durationStr)
+		err := r.runSingle(ctx, plan, config, eval, currentRate, durationStr)
 		if err != nil {
 			return err
 		}
@@ -129,7 +113,7 @@ func (r *Runner) runStepping(ctx context.Context, plan *domain.TestPlan, config 
 		binPaths = append(binPaths, stepBinPath)
 		config.ResultBinPath = stepBinPath
 
-		err := r.runSingle(ctx, plan, config, eval, vegetaPath, maxRate, durationStr)
+		err := r.runSingle(ctx, plan, config, eval, maxRate, durationStr)
 		if err != nil {
 			return err
 		}
@@ -139,201 +123,121 @@ func (r *Runner) runStepping(ctx context.Context, plan *domain.TestPlan, config 
 	return nil
 }
 
-func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator, vegetaPath string, rate int, duration string) error {
-	args := []string{
-		"attack",
-		"-format=json",
-		"-targets=stdin",
-		"-lazy=true",
-		"-rate", fmt.Sprintf("%d", rate),
-		"-duration", duration,
-		"-keepalive=true",
-	}
-	if config.Workers > 0 {
-		args = append(args, "-max-workers", fmt.Sprintf("%d", config.Workers))
-	}
-
-	cmd := exec.CommandContext(ctx, vegetaPath, args...)
-
-	stdin, err := cmd.StdinPipe()
+func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator, rate int, durationStr string) error {
+	dur, err := time.ParseDuration(durationStr)
 	if err != nil {
-		return fmt.Errorf("failed to create stdin pipe: %w", err)
+		return fmt.Errorf("invalid duration: %w", err)
 	}
 
-	// Open in TRUNC mode so it starts fresh (we no longer append gob streams)
+	pacer := vegeta.ConstantPacer{Freq: rate, Per: time.Second}
+	
+	var atkOpts []func(*vegeta.Attacker)
+	if config.Workers > 0 {
+		// CLI vegeta uses -max-workers which sets max workers but leaves initial workers at 10.
+		atkOpts = append(atkOpts, vegeta.Workers(10))
+		atkOpts = append(atkOpts, vegeta.MaxWorkers(uint64(config.Workers)))
+	}
+	atkOpts = append(atkOpts, vegeta.KeepAlive(true))
+	atkOpts = append(atkOpts, vegeta.Connections(10000))
+	atkOpts = append(atkOpts, vegeta.MaxConnections(10000))
+	atkOpts = append(atkOpts, vegeta.Timeout(30*time.Second))
+
+	attacker := vegeta.NewAttacker(atkOpts...)
+
 	outFile, err := os.OpenFile(config.ResultBinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open result file: %w", err)
 	}
-	defer func() { _ = outFile.Close() }()
+	defer outFile.Close()
 
-	// Wrap outputs in large buffers to minimize syscalls and prevent blocking vegeta attack
-	bufferedOut := bufio.NewWriterSize(outFile, 1024*1024) // 1MB buffer
-	
-	encodeCmd := exec.CommandContext(ctx, vegetaPath, "encode", "-to", "json")
-	encodeStdin, err := encodeCmd.StdinPipe()
-	if err != nil {
-		return err
+	bufferedOut := bufio.NewWriterSize(outFile, 1024*1024) // 1MB buffer to prevent disk I/O bottleneck
+	defer bufferedOut.Flush()
+
+	enc := vegeta.NewEncoder(bufferedOut)
+
+	// Pre-calculate cumulative weights for faster selection
+	type samplerDist struct {
+		sampler    *domain.Sampler
+		cumulative float64
 	}
-	// 64KB buffer: large enough to batch syscalls and prevent vegeta attack from blocking,
-	// but small enough to flush frequently (prevents dashboard TPS jumping).
-	bufferedEncode := bufio.NewWriterSize(encodeStdin, 64*1024)
+	tgDistributions := make([][]samplerDist, len(plan.ThreadGroups))
+	tgTotalWeights := make([]float64, len(plan.ThreadGroups))
 
-	encodeStdout, err := encodeCmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-
-	cmd.Stdout = io.MultiWriter(bufferedOut, bufferedEncode)
-	cmd.Stderr = os.Stderr
-
-	if err := encodeCmd.Start(); err != nil {
-		return err
-	}
-
-	attackStart := time.Now()
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start vegeta: %w", err)
-	}
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[VegetaRunner] Panic in generation goroutine: %v", r)
-			}
-		}()
-		defer func() { _ = stdin.Close() }()
-		encoder := json.NewEncoder(stdin)
-
-		// Seed random generator for weighted selection
-		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-		// Pre-calculate cumulative weights for faster selection
-		type samplerDist struct {
-			sampler    *domain.Sampler
-			cumulative float64
+	for i, tg := range plan.ThreadGroups {
+		var current float64
+		dist := make([]samplerDist, 0, len(tg.Samplers))
+		for _, s := range tg.Samplers {
+			current += s.Weight
+			dist = append(dist, samplerDist{
+				sampler:    s,
+				cumulative: current,
+			})
 		}
-		tgDistributions := make([][]samplerDist, len(plan.ThreadGroups))
-		tgTotalWeights := make([]float64, len(plan.ThreadGroups))
+		tgDistributions[i] = dist
+		tgTotalWeights[i] = current
+	}
 
-		for i, tg := range plan.ThreadGroups {
-			var current float64
-			dist := make([]samplerDist, 0, len(tg.Samplers))
-			for _, s := range tg.Samplers {
-				current += s.Weight
-				dist = append(dist, samplerDist{
-					sampler:    s,
-					cumulative: current,
-				})
-			}
-			tgDistributions[i] = dist
-			tgTotalWeights[i] = current
+	var tgCounter uint64
+	// Use global math/rand for thread-safe concurrent access without manual mutex
+	// Go 1.20+ automatically seeds the global random generator.
+
+	targeter := func(tgt *vegeta.Target) error {
+		if tgt == nil {
+			return vegeta.ErrNilTarget
 		}
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				for i, tg := range plan.ThreadGroups {
-					dist := tgDistributions[i]
-					if len(dist) == 0 {
-						continue
-					}
-
-					r := rnd.Float64() * tgTotalWeights[i]
-					var sampler *domain.Sampler
-					for _, d := range dist {
-						if r <= d.cumulative {
-							sampler = d.sampler
-							break
-						}
-					}
-					if sampler == nil {
-						sampler = tg.Samplers[len(tg.Samplers)-1]
-					}
-						reqTemplate := sampler.Request
-						if reqTemplate == nil {
-							continue
-						}
-
-						evalURL := eval.Evaluate(reqTemplate.URL)
-						evalBody := eval.Evaluate(reqTemplate.BodyTemplate)
-						evalHeaders := make(map[string][]string)
-						for k, v := range reqTemplate.Headers {
-							evalHeaders[k] = []string{eval.Evaluate(v)}
-						}
-
-						target := Target{
-							Method: reqTemplate.Method,
-							URL:    evalURL,
-							Header: evalHeaders,
-						}
-						if evalBody != "" {
-							target.Body = []byte(evalBody)
-						}
-
-						if err := encoder.Encode(target); err != nil {
-							// Broken pipe means vegeta closed stdin (finished)
-							return
-						}
-					}
+		idx := atomic.AddUint64(&tgCounter, 1) - 1
+		tgIdx := idx % uint64(len(plan.ThreadGroups))
+		
+		tg := plan.ThreadGroups[tgIdx]
+		dist := tgDistributions[tgIdx]
+		
+		var sampler *domain.Sampler
+		if len(dist) == 0 {
+			return fmt.Errorf("no samplers in thread group %s", tg.Name)
+		} else {
+			r := rand.Float64() * tgTotalWeights[tgIdx]
+			for _, d := range dist {
+				if r <= d.cumulative {
+					sampler = d.sampler
+					break
+				}
+			}
+			if sampler == nil {
+				sampler = tg.Samplers[len(tg.Samplers)-1]
 			}
 		}
-	}()
 
-	dashboardDone := make(chan struct{})
-	go r.runDashboard(encodeStdout, dashboardDone)
-
-	err = cmd.Wait()
-	_ = bufferedOut.Flush()
-	_ = bufferedEncode.Flush()
-	_ = encodeStdin.Close() // this tells encodeCmd to stop
-	_ = encodeCmd.Wait()
-	<-dashboardDone
-	
-	elapsed := time.Since(attackStart).Round(time.Millisecond)
-	log.Printf("[VegetaRunner] Step completed in %s.", elapsed)
-	if err != nil {
-		return fmt.Errorf("vegeta attack failed: %w", err)
-	}
-	return nil
-}
-
-// fast parsing to avoid encoding/json overhead
-func parseFastJSON(line []byte) (code int, lat int64, hasErr bool) {
-	latIdx := bytes.Index(line, []byte(`"latency":`))
-	if latIdx != -1 {
-		latIdx += 10
-		end := bytes.IndexByte(line[latIdx:], ',')
-		if end != -1 {
-			lat, _ = strconv.ParseInt(string(line[latIdx:latIdx+end]), 10, 64)
+		if sampler == nil || sampler.Request == nil {
+			return fmt.Errorf("no sampler found")
 		}
-	}
-	
-	codeIdx := bytes.Index(line, []byte(`"code":`))
-	if codeIdx != -1 {
-		codeIdx += 7
-		end := bytes.IndexByte(line[codeIdx:], ',')
-		if end != -1 {
-			code, _ = strconv.Atoi(string(line[codeIdx:codeIdx+end]))
+
+		reqTemplate := sampler.Request
+		evalURL := eval.Evaluate(reqTemplate.URL)
+		evalBody := eval.Evaluate(reqTemplate.BodyTemplate)
+		
+		tgt.Method = reqTemplate.Method
+		tgt.URL = evalURL
+		tgt.Body = nil // MUST RESET because tgt is reused by vegeta worker
+		
+		if len(reqTemplate.Headers) > 0 {
+			// Bypass http.Header.Set to prevent canonicalization (e.g. changing interface-id to Interface-Id)
+			// This matches the old behavior of json.Unmarshal into map[string][]string
+			tgt.Header = make(http.Header)
+			for k, v := range reqTemplate.Headers {
+				tgt.Header[k] = []string{eval.Evaluate(v)}
+			}
+		} else {
+			tgt.Header = nil
 		}
+
+		if evalBody != "" {
+			tgt.Body = []byte(evalBody)
+		}
+
+		return nil
 	}
 
-	errIdx := bytes.Index(line, []byte(`"error":"`))
-	if errIdx != -1 {
-		errIdx += 9
-		if errIdx < len(line) && line[errIdx] != '"' {
-			hasErr = true
-		}
-	}
-	if code >= 400 || code == 0 {
-		hasErr = true
-	}
-	return
-}
-
-func (r *Runner) runDashboard(stdout io.Reader, done chan struct{}) {
 	var (
 		intervalReqs    atomic.Int64
 		intervalLatency atomic.Int64
@@ -343,40 +247,28 @@ func (r *Runner) runDashboard(stdout io.Reader, done chan struct{}) {
 	var mu sync.Mutex
 	latencies := make([]float64, 0, 10000)
 
-	startTime := time.Now()
 	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
-	go func() {
-		defer close(done)
-		scanner := bufio.NewScanner(stdout)
-		buf := make([]byte, 1024*1024)      // 1MB initial buffer
-		scanner.Buffer(buf, 10*1024*1024)   // Max 10MB per line
-		for scanner.Scan() {
-			_, lat, hasErr := parseFastJSON(scanner.Bytes())
+	attackStart := time.Now()
 
-			intervalReqs.Add(1)
-			totalReqs.Add(1)
-			intervalLatency.Add(lat)
+	for res := range attacker.Attack(targeter, pacer, dur, "vjm-attack") {
+		_ = enc.Encode(res)
 
-			latMs := float64(lat) / 1e6
-			mu.Lock()
-			latencies = append(latencies, latMs)
-			mu.Unlock()
+		intervalReqs.Add(1)
+		totalReqs.Add(1)
+		intervalLatency.Add(int64(res.Latency))
 
-			if hasErr {
-				intervalErrors.Add(1)
-			}
+		latMs := float64(res.Latency) / 1e6
+		mu.Lock()
+		latencies = append(latencies, latMs)
+		mu.Unlock()
+
+		if res.Error != "" || res.Code >= 400 || res.Code == 0 {
+			intervalErrors.Add(1)
 		}
-		if err := scanner.Err(); err != nil {
-			log.Printf("[Dashboard] Error reading vegeta output: %v", err)
-		}
-	}()
 
-	for {
 		select {
-		case <-done:
-			ticker.Stop()
-			return
 		case <-ticker.C:
 			iReqs := intervalReqs.Swap(0)
 			iLat := intervalLatency.Swap(0)
@@ -409,9 +301,14 @@ func (r *Runner) runDashboard(stdout io.Reader, done chan struct{}) {
 				errPct = (float64(iErrs) / float64(iReqs)) * 100.0
 			}
 
-			elapsed := time.Since(startTime).Round(time.Second)
+			elapsed := time.Since(attackStart).Round(time.Second)
 			log.Printf("[Dashboard] %02d:%02d | TPS: %5.1f | Avg: %5.1fms | P99: %5.1fms | Max: %5.1fms | Err: %3.1f%% | TotReq: %d",
 				int(elapsed.Minutes()), int(elapsed.Seconds())%60, tps, avgLatMs, p99, maxLat, errPct, tReqs)
+		default:
 		}
 	}
+
+	elapsed := time.Since(attackStart).Round(time.Millisecond)
+	log.Printf("[VegetaRunner] Step completed in %s.", elapsed)
+	return nil
 }

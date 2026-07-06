@@ -3,7 +3,6 @@ package evaluator
 import (
 	"math/rand/v2"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +12,6 @@ import (
 type DefaultEvaluator struct {
 	properties map[string]string
 	variables  map[string]string
-	regex      *regexp.Regexp
 }
 
 func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
@@ -23,8 +21,6 @@ func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
 	return &DefaultEvaluator{
 		properties: props,
 		variables:  make(map[string]string),
-		// Matches ${...} non-greedily. Nested ${} is handled via recursive evaluation.
-		regex: regexp.MustCompile(`\$\{([^}]+)\}`),
 	}
 }
 
@@ -45,22 +41,35 @@ func (e *DefaultEvaluator) AddVariables(vars map[string]string) {
 // Evaluate performs recursive evaluation of JMeter variables and functions
 func (e *DefaultEvaluator) Evaluate(template string) string {
 	// Limit recursion to 10 depths to prevent infinite loops
-	for i := 0; i < 10; i++ {
-		matches := e.regex.FindAllStringSubmatch(template, -1)
-		if len(matches) == 0 {
-			break
-		}
-
+	for pass := 0; pass < 10; pass++ {
 		previous := template
-
-		for _, match := range matches {
-			fullMatch := match[0] // e.g. ${__time(yyyy)}
-			inner := match[1]     // e.g. __time(yyyy)
-
+		
+		var sb strings.Builder
+		rest := template
+		for {
+			start := strings.Index(rest, "${")
+			if start == -1 {
+				sb.WriteString(rest)
+				break
+			}
+			
+			end := strings.Index(rest[start+2:], "}")
+			if end == -1 {
+				sb.WriteString(rest)
+				break
+			}
+			end += start + 2
+			
+			inner := rest[start+2 : end]
 			replacement := e.evaluateInner(inner)
-			template = strings.Replace(template, fullMatch, replacement, 1)
+			
+			sb.WriteString(rest[:start])
+			sb.WriteString(replacement)
+			
+			rest = rest[end+1:]
 		}
-
+		
+		template = sb.String()
 		if template == previous {
 			break
 		}

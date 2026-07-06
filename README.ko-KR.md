@@ -67,22 +67,13 @@ flowchart LR
 
 ## 사전 요구사항
 
-vjm을 실행하는 머신에 아래 도구들이 설치되어 있어야 합니다.
+`vjm`은 단일 바이너리로 동작하며, 부하 테스트 실행을 위해 사전 설치해야 할 **외부 종속성이 없습니다.**
 
 | 도구 | 용도 | 설치 확인 |
 |------|------|----------|
-| [Vegeta](https://github.com/tsenart/vegeta) | HTTP 부하 발생 엔진 | `vegeta -version` |
 | [Apache JMeter](https://jmeter.apache.org/) | HTML 리포트 생성 (선택) | `$JMETER_HOME/bin/jmeter -v` |
 
-```bash
-# Vegeta 설치 예시 (Linux)
-go install github.com/tsenart/vegeta@latest
-
-# 또는 GitHub Releases에서 바이너리 직접 다운로드
-# https://github.com/tsenart/vegeta/releases
-```
-
-> **참고:** JMeter는 HTML 리포트(`-e` 옵션)를 생성할 때만 필요합니다. 부하 테스트 실행 자체에는 필요하지 않습니다.
+> **참고:** JMeter는 HTML 리포트(`-e` 옵션)를 생성할 때만 필요합니다. 부하 테스트 실행 자체에는 필요하지 않습니다. (Vegeta 엔진은 `vjm` 내부에 라이브러리로 내장되어 있습니다.)
 
 ---
 
