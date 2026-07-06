@@ -103,8 +103,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentThreadGroup = &domain.ThreadGroup{
 					Name: nameAttr,
 				}
-				if currentTag == "kg.apc.jmeter.threads.SteppingThreadGroup" {
+				switch currentTag {
+				case "kg.apc.jmeter.threads.SteppingThreadGroup":
 					currentThreadGroup.SteppingConfig = &domain.SteppingConfig{}
+				case "com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup":
+					currentThreadGroup.ConcurrencyConfig = &domain.ConcurrencyConfig{}
 				}
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
@@ -341,6 +344,26 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "flighttime":
 					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
 						currentThreadGroup.SteppingConfig.HoldDuration = val
+					}
+				case "TargetLevel":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.TargetLevel = val
+					}
+				case "RampUp":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.RampUp = val
+					}
+				case "Steps":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.Steps = val
+					}
+				case "Hold":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.Hold = val
+					}
+				case "Unit":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.Unit = val
 					}
 				case "ThroughputController.maxThroughput":
 					if v, err := strconv.ParseFloat(val, 64); err == nil {

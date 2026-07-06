@@ -347,7 +347,7 @@ Error Set:
 - [x] **Thread Group** (Standard)
 - [x] **jp@gc - Stepping Thread Group**
 - [x] **Open Model Thread Group**
-- [ ] **bzm - Concurrency Thread Group**
+- [x] **bzm - Concurrency Thread Group**
 - [ ] **bzm - Free-Form Arrivals Thread Group**
 - [ ] **setUp Thread Group**
 - [ ] **tearDown Thread Group**

@@ -23,6 +23,15 @@ type TestPlan struct {
 	ThreadGroups         []*ThreadGroup
 }
 
+// ConcurrencyConfig represents the properties of a bzm - Concurrency Thread Group.
+type ConcurrencyConfig struct {
+	TargetLevel string
+	RampUp      string
+	Steps       string
+	Hold        string
+	Unit        string
+}
+
 // ThreadGroup represents a JMeter Thread Group.
 // NumThreads, RampUp, and Duration are parsed from the JMX but not yet used by the runner.
 // These will be leveraged in a future enhancement to support stepped load (e.g. SteppingThreadGroup)
@@ -34,6 +43,7 @@ type ThreadGroup struct {
 	Duration       int // TODO: total duration per step
 	Samplers       []*Sampler
 	SteppingConfig *SteppingConfig
+	ConcurrencyConfig *ConcurrencyConfig
 	OpenModelSchedule string // JMeter 5.5+ Open Model Thread Group DSL schedule
 	Timers         []*Timer
 }

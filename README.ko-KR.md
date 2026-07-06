@@ -346,7 +346,7 @@ Error Set:
 - [x] **Thread Group** (기본)
 - [x] **jp@gc - Stepping Thread Group**
 - [x] **Open Model Thread Group**
-- [ ] **bzm - Concurrency Thread Group**
+- [x] **bzm - Concurrency Thread Group**
 - [ ] **jp@gc - Ultimate Thread Group**
 - [ ] **bzm - Arrivals Thread Group**
 - [ ] **bzm - Free-Form Arrivals Thread Group**

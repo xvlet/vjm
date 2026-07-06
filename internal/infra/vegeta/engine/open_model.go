@@ -1,4 +1,4 @@
-package vegeta
+package engine
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ type OpenModelPhase struct {
 
 type OpenModelPacer struct {
 	phases   []OpenModelPhase
-	totalDur time.Duration
+	TotalDur time.Duration
 }
 
 func ParseOpenModelSchedule(schedule string) (*OpenModelPacer, error) {
@@ -120,7 +120,7 @@ func ParseOpenModelSchedule(schedule string) (*OpenModelPacer, error) {
 		return nil, fmt.Errorf("no valid phases found in schedule")
 	}
 
-	return &OpenModelPacer{phases: phases, totalDur: total}, nil
+	return &OpenModelPacer{phases: phases, TotalDur: total}, nil
 }
 
 // hitsAt returns the expected number of hits up to time t
@@ -156,7 +156,7 @@ func (p *OpenModelPacer) hitsAt(t time.Duration) float64 {
 }
 
 func (p *OpenModelPacer) Pace(elapsed time.Duration, hits uint64) (time.Duration, bool) {
-	if elapsed >= p.totalDur {
+	if elapsed >= p.TotalDur {
 		return 0, true
 	}
 
@@ -186,7 +186,7 @@ func (p *OpenModelPacer) Pace(elapsed time.Duration, hits uint64) (time.Duration
 
 // Rate returns the instantaneous rate at the given elapsed time
 func (p *OpenModelPacer) Rate(elapsed time.Duration) float64 {
-	if elapsed >= p.totalDur {
+	if elapsed >= p.TotalDur {
 		return 0
 	}
 	accumulatedTime := time.Duration(0)
