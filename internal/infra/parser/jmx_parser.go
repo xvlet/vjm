@@ -49,13 +49,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 
 	var hashTreeDepth int
 	var pendingWeight float64
-	var activeWeight float64 = 1.0
+	var activeWeight = 1.0
 	weightMap := make(map[int]float64)
 
 	var inFloatProperty bool
 	var floatPropName string
 	var floatPropNameState bool
 	var floatPropValueState bool
+
+	var inJSONExtractor, inRegexExtractor bool
+	var currentJSONExtractor *domain.JSONExtractor
+	var currentRegexExtractor *domain.RegexExtractor
 
 	for {
 		t, err := decoder.Token()
@@ -150,6 +154,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentThreadGroup.Timers = append(currentThreadGroup.Timers, currentTimer)
 					}
 				}
+			} else if currentTag == "JSONPostProcessor" {
+				inJSONExtractor = true
+				currentJSONExtractor = &domain.JSONExtractor{}
+			} else if currentTag == "RegexExtractor" {
+				inRegexExtractor = true
+				currentRegexExtractor = &domain.RegexExtractor{}
 			}
 
 		case xml.EndElement:
@@ -173,6 +183,29 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				floatPropNameState = false
 			} else if se.Name.Local == "value" && inFloatProperty {
 				floatPropValueState = false
+			} else if se.Name.Local == "JSONPostProcessor" {
+				inJSONExtractor = false
+				if currentJSONExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentJSONExtractor)
+					}
+				}
+				currentJSONExtractor = nil
+			} else if se.Name.Local == "RegexExtractor" {
+				inRegexExtractor = false
+				if currentRegexExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, domain.NewRegexExtractor(
+							currentRegexExtractor.ReferenceName,
+							currentRegexExtractor.Regex,
+							currentRegexExtractor.Template,
+							currentRegexExtractor.DefaultValueStr,
+						))
+					}
+				}
+				currentRegexExtractor = nil
 			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
 				currentTimer = nil
 			} else if se.Name.Local == "HTTPSamplerProxy" && currentReq != nil {
@@ -289,6 +322,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							currentThreadGroup.SteppingConfig.MaxRate = val
 						}
 					}
+				case "OpenModelThreadGroup.schedule":
+					if currentThreadGroup != nil {
+						currentThreadGroup.OpenModelSchedule = val
+					}
 				case "Threads initial delay":
 					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
 						currentThreadGroup.SteppingConfig.InitialDelay = val
@@ -336,6 +373,34 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							target.Headers[currentHeaderName] = val
 						}
 						currentHeaderName = ""
+					}
+				case "JSONPostProcessor.referenceNames":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						currentJSONExtractor.ReferenceName = val
+					}
+				case "JSONPostProcessor.jsonPathExprs":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						currentJSONExtractor.JSONPathExpr = val
+					}
+				case "JSONPostProcessor.defaultValues":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						currentJSONExtractor.DefaultValueStr = val
+					}
+				case "RegexExtractor.refname":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.ReferenceName = val
+					}
+				case "RegexExtractor.regex":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.Regex = val
+					}
+				case "RegexExtractor.template":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.Template = val
+					}
+				case "RegexExtractor.default":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.DefaultValueStr = val
 					}
 				default:
 					// Handle UserParameters variables

@@ -129,114 +129,153 @@ func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *d
 		return fmt.Errorf("invalid duration: %w", err)
 	}
 
-	pacer := vegeta.ConstantPacer{Freq: rate, Per: time.Second}
-	
-	var atkOpts []func(*vegeta.Attacker)
-	if config.Workers > 0 {
-		// CLI vegeta uses -max-workers which sets max workers but leaves initial workers at 10.
-		atkOpts = append(atkOpts, vegeta.Workers(10))
-		atkOpts = append(atkOpts, vegeta.MaxWorkers(uint64(config.Workers)))
-	}
-	atkOpts = append(atkOpts, vegeta.KeepAlive(true))
-	atkOpts = append(atkOpts, vegeta.Connections(10000))
-	atkOpts = append(atkOpts, vegeta.MaxConnections(10000))
-	atkOpts = append(atkOpts, vegeta.Timeout(30*time.Second))
+	var pacer vegeta.Pacer
+	pacer = vegeta.ConstantPacer{Freq: rate, Per: time.Second}
 
-	attacker := vegeta.NewAttacker(atkOpts...)
+	// Check for OpenModelThreadGroup schedule
+	for _, tg := range plan.ThreadGroups {
+		if tg.OpenModelSchedule != "" {
+			op, err := ParseOpenModelSchedule(tg.OpenModelSchedule)
+			if err != nil {
+				return fmt.Errorf("failed to parse open model schedule: %w", err)
+			}
+			pacer = op
+			dur = op.totalDur
+			log.Printf("[VegetaRunner] Using OpenModelPacer with duration %s", dur)
+			break
+		}
+	}
+
+	// Check if this plan requires stateful execution (e.g. Extractors)
+	isStateful := false
+	for _, tg := range plan.ThreadGroups {
+		for _, s := range tg.Samplers {
+			if len(s.Extractors) > 0 {
+				isStateful = true
+				break
+			}
+		}
+	}
+
+	var resultsChan <-chan *vegeta.Result
+
+	if isStateful {
+		workers := uint64(10)
+		if config.Workers > 0 {
+			workers = uint64(config.Workers)
+		}
+		statefulAttacker := NewStatefulAttacker(workers, pacer, dur)
+		resultsChan = statefulAttacker.Attack(ctx, plan, eval)
+	} else {
+		var atkOpts []func(*vegeta.Attacker)
+		if config.Workers > 0 {
+			// CLI vegeta uses -max-workers which sets max workers but leaves initial workers at 10.
+			atkOpts = append(atkOpts, vegeta.Workers(10))
+			atkOpts = append(atkOpts, vegeta.MaxWorkers(uint64(config.Workers)))
+		}
+		atkOpts = append(atkOpts, vegeta.KeepAlive(true))
+		atkOpts = append(atkOpts, vegeta.Connections(10000))
+		atkOpts = append(atkOpts, vegeta.MaxConnections(10000))
+		atkOpts = append(atkOpts, vegeta.Timeout(30*time.Second))
+
+		standardAttacker := vegeta.NewAttacker(atkOpts...)
+		
+		// Setup targeter
+		var tgCounter uint64
+		// Pre-calculate cumulative weights for faster selection
+		type samplerDist struct {
+			sampler    *domain.Sampler
+			cumulative float64
+		}
+		tgDistributions := make([][]samplerDist, len(plan.ThreadGroups))
+		tgTotalWeights := make([]float64, len(plan.ThreadGroups))
+
+		for i, tg := range plan.ThreadGroups {
+			var current float64
+			dist := make([]samplerDist, 0, len(tg.Samplers))
+			for _, s := range tg.Samplers {
+				current += s.Weight
+				dist = append(dist, samplerDist{
+					sampler:    s,
+					cumulative: current,
+				})
+			}
+			tgDistributions[i] = dist
+			tgTotalWeights[i] = current
+		}
+
+		// Use global math/rand for thread-safe concurrent access without manual mutex
+		// Go 1.20+ automatically seeds the global random generator.
+		targeter := func(tgt *vegeta.Target) error {
+			if tgt == nil {
+				return vegeta.ErrNilTarget
+			}
+
+			idx := atomic.AddUint64(&tgCounter, 1) - 1
+			tgIdx := idx % uint64(len(plan.ThreadGroups))
+			
+			tg := plan.ThreadGroups[tgIdx]
+			dist := tgDistributions[tgIdx]
+			
+			var sampler *domain.Sampler
+			if len(dist) == 0 {
+				return fmt.Errorf("no samplers in thread group %s", tg.Name)
+			} else {
+				r := rand.Float64() * tgTotalWeights[tgIdx]
+				for _, d := range dist {
+					if r <= d.cumulative {
+						sampler = d.sampler
+						break
+					}
+				}
+				if sampler == nil {
+					sampler = tg.Samplers[len(tg.Samplers)-1]
+				}
+			}
+
+			if sampler == nil || sampler.Request == nil {
+				return fmt.Errorf("no sampler found")
+			}
+
+			reqTemplate := sampler.Request
+			evalURL := eval.Evaluate(reqTemplate.URL)
+			evalBody := eval.Evaluate(reqTemplate.BodyTemplate)
+			
+			tgt.Method = reqTemplate.Method
+			tgt.URL = evalURL
+			tgt.Body = nil // MUST RESET because tgt is reused by vegeta worker
+			
+			if len(reqTemplate.Headers) > 0 {
+				// Bypass http.Header.Set to prevent canonicalization (e.g. changing interface-id to Interface-Id)
+				// This matches the old behavior of json.Unmarshal into map[string][]string
+				tgt.Header = make(http.Header)
+				for k, v := range reqTemplate.Headers {
+					tgt.Header[k] = []string{eval.Evaluate(v)}
+				}
+			} else {
+				tgt.Header = nil
+			}
+
+			if evalBody != "" {
+				tgt.Body = []byte(evalBody)
+			}
+
+			return nil
+		}
+		
+		resultsChan = standardAttacker.Attack(targeter, pacer, dur, "vjm-attack")
+	}
 
 	outFile, err := os.OpenFile(config.ResultBinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open result file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	bufferedOut := bufio.NewWriterSize(outFile, 1024*1024) // 1MB buffer to prevent disk I/O bottleneck
-	defer bufferedOut.Flush()
+	defer func() { _ = bufferedOut.Flush() }()
 
 	enc := vegeta.NewEncoder(bufferedOut)
-
-	// Pre-calculate cumulative weights for faster selection
-	type samplerDist struct {
-		sampler    *domain.Sampler
-		cumulative float64
-	}
-	tgDistributions := make([][]samplerDist, len(plan.ThreadGroups))
-	tgTotalWeights := make([]float64, len(plan.ThreadGroups))
-
-	for i, tg := range plan.ThreadGroups {
-		var current float64
-		dist := make([]samplerDist, 0, len(tg.Samplers))
-		for _, s := range tg.Samplers {
-			current += s.Weight
-			dist = append(dist, samplerDist{
-				sampler:    s,
-				cumulative: current,
-			})
-		}
-		tgDistributions[i] = dist
-		tgTotalWeights[i] = current
-	}
-
-	var tgCounter uint64
-	// Use global math/rand for thread-safe concurrent access without manual mutex
-	// Go 1.20+ automatically seeds the global random generator.
-
-	targeter := func(tgt *vegeta.Target) error {
-		if tgt == nil {
-			return vegeta.ErrNilTarget
-		}
-
-		idx := atomic.AddUint64(&tgCounter, 1) - 1
-		tgIdx := idx % uint64(len(plan.ThreadGroups))
-		
-		tg := plan.ThreadGroups[tgIdx]
-		dist := tgDistributions[tgIdx]
-		
-		var sampler *domain.Sampler
-		if len(dist) == 0 {
-			return fmt.Errorf("no samplers in thread group %s", tg.Name)
-		} else {
-			r := rand.Float64() * tgTotalWeights[tgIdx]
-			for _, d := range dist {
-				if r <= d.cumulative {
-					sampler = d.sampler
-					break
-				}
-			}
-			if sampler == nil {
-				sampler = tg.Samplers[len(tg.Samplers)-1]
-			}
-		}
-
-		if sampler == nil || sampler.Request == nil {
-			return fmt.Errorf("no sampler found")
-		}
-
-		reqTemplate := sampler.Request
-		evalURL := eval.Evaluate(reqTemplate.URL)
-		evalBody := eval.Evaluate(reqTemplate.BodyTemplate)
-		
-		tgt.Method = reqTemplate.Method
-		tgt.URL = evalURL
-		tgt.Body = nil // MUST RESET because tgt is reused by vegeta worker
-		
-		if len(reqTemplate.Headers) > 0 {
-			// Bypass http.Header.Set to prevent canonicalization (e.g. changing interface-id to Interface-Id)
-			// This matches the old behavior of json.Unmarshal into map[string][]string
-			tgt.Header = make(http.Header)
-			for k, v := range reqTemplate.Headers {
-				tgt.Header[k] = []string{eval.Evaluate(v)}
-			}
-		} else {
-			tgt.Header = nil
-		}
-
-		if evalBody != "" {
-			tgt.Body = []byte(evalBody)
-		}
-
-		return nil
-	}
 
 	var (
 		intervalReqs    atomic.Int64
@@ -252,7 +291,7 @@ func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *d
 
 	attackStart := time.Now()
 
-	for res := range attacker.Attack(targeter, pacer, dur, "vjm-attack") {
+	for res := range resultsChan {
 		_ = enc.Encode(res)
 
 		intervalReqs.Add(1)

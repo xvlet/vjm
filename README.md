@@ -58,11 +58,10 @@ Because `vjm` translates JMeter's **Thread-based, sequential state** model into 
 
 *   **Timers (e.g., Constant Timer, Synchronizing Timer)**: Vegeta controls load via a global `-rate` (TPS) rather than per-thread sleeps. Timers are parsed but cannot physically delay individual requests within Vegeta's stateless execution flow.
 *   **Logic Controllers (e.g., If, While, Loop, ForEach)**: Vegeta fires predefined targets continuously. It cannot conditionally branch or loop based on the outcome of a previous request.
-*   **Post-Processors & Extractors (e.g., JSON Extractor)**: `vjm` cannot extract a value from Request A's response (like a token) and dynamically inject it into Request B in real-time, as Vegeta does not support request chaining.
-*   **Stateful Configs (e.g., HTTP Cookie Manager)**: Vegeta does not maintain separate cookie jars or browser-like sessions per worker.
+*   **Stateful Configs (e.g., HTTP Cookie Manager)**: Vegeta does not maintain separate cookie jars or browser-like sessions per worker. (However, variable chaining using Extractors is supported)
 *   **Assertions**: Vegeta strictly measures HTTP status codes and latencies. It does not inspect response bodies to assert text matches or JSON paths.
 
-*(Instead of sequential state, `vjm` relies on **Multi-Sampler Support (Weights)** to distribute traffic proportionally across multiple independent APIs.)*
+*(For sequential state scenarios, `vjm` switches to its own StatefulAttacker mode for scenarios with Extractors. Otherwise, it relies on **Multi-Sampler Support (Weights)** to distribute traffic proportionally across multiple independent APIs.)*
 
 ---
 
@@ -336,11 +335,121 @@ Error Set:
 
 ## Roadmap
 
+### Key Milestones
 - [x] **SteppingThreadGroup Support**: Implement JMeter's stepped load increase scenarios
 - [x] **Multi-Sampler Support**: Handle multiple HTTPSamplers within a ThreadGroup based on weights
+- [x] **Stateful Variable Chaining (Extractors)**: Support sequential scenarios by extracting values from previous responses and injecting them into subsequent requests
 - [ ] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
 - [ ] **WebSocket Support**: Integrate WS protocol load testing
 - [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
+
+### Thread Group Support
+- [x] **Thread Group** (Standard)
+- [x] **jp@gc - Stepping Thread Group**
+- [x] **Open Model Thread Group**
+- [ ] **bzm - Concurrency Thread Group**
+- [ ] **bzm - Free-Form Arrivals Thread Group**
+- [ ] **setUp Thread Group**
+- [ ] **tearDown Thread Group**
+
+### Config Elements
+- [x] **HTTP Header Manager**
+- [x] **HTTP Request Defaults**
+- [x] **User Defined Variables**
+- [ ] **CSV Data Set Config**
+- [ ] **HTTP Cookie Manager**
+- [ ] **HTTP Cache Manager**
+- [ ] **Bolt Connection Configuration**
+- [ ] **Counter**
+- [ ] **DNS Cache Manager**
+- [ ] **FTP Request Defaults**
+- [ ] **HTTP Authorization Manager**
+- [ ] **JDBC Connection Configuration**
+- [ ] **Java Request Defaults**
+- [ ] **Keystore Configuration**
+- [ ] **LDAP Extended Request Defaults**
+- [ ] **LDAP Request Defaults**
+- [ ] **Login Config Element**
+- [ ] **Random Variable**
+- [ ] **Simple Config Element**
+- [ ] **TCP Sampler Config**
+
+### Listeners
+- [ ] **View Results Tree**
+- [ ] **Summary Report**
+- [ ] **Aggregate Report**
+- [ ] **Backend Listener**
+- [ ] **Aggregate Graph**
+- [ ] **Assertion Results**
+- [ ] **Comparison Assertion Visualizer**
+- [ ] **Generate Summary Results**
+- [ ] **Graph Results**
+- [ ] **JSR223 Listener**
+- [ ] **Mailer Visualizer**
+- [ ] **Response Time Graph**
+- [ ] **Save Responses to a file**
+- [ ] **Simple Data Writer**
+- [ ] **View Results in Table**
+- [ ] **BeanShell Listener**
+
+### Timers
+- [x] **Constant Timer**
+- [x] **Uniform Random Timer**
+- [ ] **Precise Throughput Timer**
+- [ ] **Constant Throughput Timer**
+- [ ] **Gaussian Random Timer**
+- [ ] **JSR223 Timer**
+- [ ] **Poisson Random Timer**
+- [ ] **Synchronizing Timer**
+- [ ] **BeanShell Timer**
+
+### Pre Processors
+- [x] **User Parameters**
+- [ ] **JSR223 PreProcessor**
+- [ ] **HTML Link Parser**
+- [ ] **HTTP URL Re-writing Modifier**
+- [ ] **JDBC PreProcessor**
+- [ ] **RegEx User Parameters**
+- [ ] **Sample Timeout**
+- [ ] **BeanShell PreProcessor**
+
+### Post Processors
+- [x] **JSON Extractor**
+- [x] **Regular Expression Extractor**
+- [ ] **CSS Selector Extractor**
+- [ ] **JSON JMESPath Extractor**
+- [ ] **Boundary Extractor**
+- [ ] **JSR223 PostProcessor**
+- [ ] **Debug PostProcessor**
+- [ ] **JDBC PostProcessor**
+- [ ] **Result Status Action Handler**
+- [ ] **XPath Extractor**
+- [ ] **XPath2 Extractor**
+- [ ] **BeanShell PostProcessor**
+
+### Assertions
+- [ ] **Response Assertion**
+- [ ] **JSON Assertion**
+- [ ] **Size Assertion**
+- [ ] **JSR223 Assertion**
+- [ ] **XPath Assertion**
+- [ ] **Compare Assertion**
+- [ ] **Duration Assertion**
+- [ ] **HTML Assertion**
+- [ ] **MD5Hex Assertion**
+- [ ] **SMIME Assertion**
+- [ ] **XML Assertion**
+- [ ] **XML Schema Assertion**
+- [ ] **XPath2 Assertion**
+- [ ] **BeanShell Assertion**
+
+### Test Fragment
+- [ ] **Test Fragment**
+
+### Non-Test Elements
+- [ ] **HTTP Mirror Server**
+- [ ] **HTTP(S) Test Script Recorder**
+- [ ] **Property Display**
 
 ---
 

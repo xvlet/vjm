@@ -34,12 +34,14 @@ type ThreadGroup struct {
 	Duration       int // TODO: total duration per step
 	Samplers       []*Sampler
 	SteppingConfig *SteppingConfig
+	OpenModelSchedule string // JMeter 5.5+ Open Model Thread Group DSL schedule
 	Timers         []*Timer
 }
 
 // Sampler represents a JMeter HTTP Sampler
 type Sampler struct {
-	Name    string
-	Request *RequestTemplate
-	Weight  float64
+	Name      string
+	Request   *RequestTemplate
+	Weight    float64
+	Extractors []Extractor
 }

@@ -24,6 +24,17 @@ func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
 	}
 }
 
+func (e *DefaultEvaluator) Clone() Evaluator {
+	newVars := make(map[string]string)
+	for k, v := range e.variables {
+		newVars[k] = v
+	}
+	return &DefaultEvaluator{
+		properties: e.properties, // Properties are global, share the reference
+		variables:  newVars,      // Variables are session-local, create a deep copy
+	}
+}
+
 // AddProperties merges additional properties into the evaluator
 func (e *DefaultEvaluator) AddProperties(props map[string]string) {
 	for k, v := range props {
@@ -36,6 +47,11 @@ func (e *DefaultEvaluator) AddVariables(vars map[string]string) {
 	for k, v := range vars {
 		e.variables[k] = v
 	}
+}
+
+// SetVariable sets a single variable for the current session
+func (e *DefaultEvaluator) SetVariable(key, value string) {
+	e.variables[key] = value
 }
 
 // Evaluate performs recursive evaluation of JMeter variables and functions
