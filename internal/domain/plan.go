@@ -9,6 +9,13 @@ type SteppingConfig struct {
 	HoldDuration  string
 }
 
+// Timer represents JMeter Timer configurations (e.g., ConstantTimer, UniformRandomTimer)
+type Timer struct {
+	Type  string // "ConstantTimer", "UniformRandomTimer"
+	Delay string
+	Range string
+}
+
 // TestPlan represents the top-level JMeter test plan
 type TestPlan struct {
 	Name                 string
@@ -27,10 +34,12 @@ type ThreadGroup struct {
 	Duration       int // TODO: total duration per step
 	Samplers       []*Sampler
 	SteppingConfig *SteppingConfig
+	Timers         []*Timer
 }
 
 // Sampler represents a JMeter HTTP Sampler
 type Sampler struct {
 	Name    string
 	Request *RequestTemplate
+	Weight  float64
 }

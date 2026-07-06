@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -174,7 +175,9 @@ func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *d
 	if err != nil {
 		return err
 	}
-	bufferedEncode := bufio.NewWriterSize(encodeStdin, 1024*1024) // 1MB buffer
+	// 64KB buffer: large enough to batch syscalls and prevent vegeta attack from blocking,
+	// but small enough to flush frequently (prevents dashboard TPS jumping).
+	bufferedEncode := bufio.NewWriterSize(encodeStdin, 64*1024)
 
 	encodeStdout, err := encodeCmd.StdoutPipe()
 	if err != nil {
@@ -202,13 +205,53 @@ func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *d
 		defer func() { _ = stdin.Close() }()
 		encoder := json.NewEncoder(stdin)
 
+		// Seed random generator for weighted selection
+		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+		// Pre-calculate cumulative weights for faster selection
+		type samplerDist struct {
+			sampler    *domain.Sampler
+			cumulative float64
+		}
+		tgDistributions := make([][]samplerDist, len(plan.ThreadGroups))
+		tgTotalWeights := make([]float64, len(plan.ThreadGroups))
+
+		for i, tg := range plan.ThreadGroups {
+			var current float64
+			dist := make([]samplerDist, 0, len(tg.Samplers))
+			for _, s := range tg.Samplers {
+				current += s.Weight
+				dist = append(dist, samplerDist{
+					sampler:    s,
+					cumulative: current,
+				})
+			}
+			tgDistributions[i] = dist
+			tgTotalWeights[i] = current
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				for _, tg := range plan.ThreadGroups {
-					for _, sampler := range tg.Samplers {
+				for i, tg := range plan.ThreadGroups {
+					dist := tgDistributions[i]
+					if len(dist) == 0 {
+						continue
+					}
+
+					r := rnd.Float64() * tgTotalWeights[i]
+					var sampler *domain.Sampler
+					for _, d := range dist {
+						if r <= d.cumulative {
+							sampler = d.sampler
+							break
+						}
+					}
+					if sampler == nil {
+						sampler = tg.Samplers[len(tg.Samplers)-1]
+					}
 						reqTemplate := sampler.Request
 						if reqTemplate == nil {
 							continue
@@ -235,7 +278,6 @@ func (r *Runner) runSingle(ctx context.Context, plan *domain.TestPlan, config *d
 							return
 						}
 					}
-				}
 			}
 		}
 	}()
@@ -307,6 +349,8 @@ func (r *Runner) runDashboard(stdout io.Reader, done chan struct{}) {
 	go func() {
 		defer close(done)
 		scanner := bufio.NewScanner(stdout)
+		buf := make([]byte, 1024*1024)      // 1MB initial buffer
+		scanner.Buffer(buf, 10*1024*1024)   // Max 10MB per line
 		for scanner.Scan() {
 			_, lat, hasErr := parseFastJSON(scanner.Bytes())
 
@@ -322,6 +366,9 @@ func (r *Runner) runDashboard(stdout io.Reader, done chan struct{}) {
 			if hasErr {
 				intervalErrors.Add(1)
 			}
+		}
+		if err := scanner.Err(); err != nil {
+			log.Printf("[Dashboard] Error reading vegeta output: %v", err)
 		}
 	}()
 

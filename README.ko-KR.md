@@ -51,6 +51,20 @@ flowchart LR
 
 ---
 
+## 지원하지 않는 JMeter 기능 (아키텍처 제약 사항)
+
+`vjm`은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 Vegeta의 **"비율(Rate) 기반의 무상태(Stateless) 모델"**로 변환하여 부하를 발생시킵니다. 따라서 쓰레드별 제어나 개별 요청 간의 상태 전이에 크게 의존하는 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
+
+*   **타이머 (Constant Timer, Synchronizing Timer 등)**: Vegeta는 전체적인 초당 발송량(`-rate`)으로만 속도를 제어하며, 개별 쓰레드가 요청과 요청 사이에 특정 밀리초(ms)만큼 대기(Sleep)하도록 물리적으로 지연시킬 수 없습니다. (JMX 파싱은 되나 실제 부하 발생 시에는 지연으로 동작하지 않음)
+*   **흐름 제어 로직 (If, While, Loop, ForEach Controller)**: Vegeta는 준비된 타겟들을 무한히 병렬로 발사하는 엔진이므로, 이전 요청의 응답 결과에 따라 다음 요청을 조건부로 분기하거나 루프를 제어할 수 없습니다.
+*   **후처리기 및 추출기 (JSON Extractor 등)**: A 요청의 응답에서 토큰을 추출하여 곧바로 이어지는 B 요청의 헤더에 동적으로 꽂아 넣는 체이닝(Chaining) 시나리오 구성이 불가합니다.
+*   **상태 유지 설정 (HTTP Cookie Manager 등)**: 워커(Worker)별로 별도의 쿠키 세션 스토리지를 관리하여 브라우저의 세션을 흉내내지 않습니다.
+*   **응답 검증 (Assertions)**: 응답 본문(Body)을 파싱하여 특정 텍스트나 JSON 경로가 포함되어 있는지 검증(Assert)하지 않으며, 오직 HTTP Status Code와 Latency 지표만 측정합니다.
+
+*(순차적 상태 시나리오 대신, `vjm`은 **Multi-Sampler 가중치(Weight) 분배**를 통해 여러 API에 비율대로 트래픽을 분산하는 부하 테스트에 최적화되어 있습니다.)*
+
+---
+
 ## 사전 요구사항
 
 vjm을 실행하는 머신에 아래 도구들이 설치되어 있어야 합니다.
@@ -331,10 +345,10 @@ Error Set:
 ## 로드맵
 
 - [x] **SteppingThreadGroup 지원**: JMeter의 계단식 부하 증가 시나리오 구현
-- [ ] **다중 Sampler 지원**: ThreadGroup 내 여러 HTTPSampler를 가중치 기반으로 처리
+- [x] **다중 Sampler 지원**: ThreadGroup 내 여러 HTTPSampler를 가중치 기반으로 처리
 - [ ] **JMeter CSV DataSet 지원**: `CSVDataSet`에서 요청별 다른 파라미터 주입
 - [ ] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
-- [ ] **실시간 콘솔 대시보드**: 테스트 진행 중 실시간 TPS / 응답시간 모니터링
+- [x] **실시간 콘솔 대시보드**: 테스트 진행 중 실시간 TPS / 응답시간 모니터링
 
 ---
 

@@ -34,6 +34,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentThreadGroup *domain.ThreadGroup
 	// samplerStack tracks open HTTPSamplerProxy elements so HeaderManager (in sibling hashTree) can attach to the right request.
 	var lastCompletedReq *domain.RequestTemplate
+	var currentTimer *domain.Timer
 
 	var currentTag, nameAttr, currentHeaderName, currentArgName string
 	var inHeaderManager, postBodyRaw, inConfigTestElement bool
@@ -45,6 +46,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var userParamState string
 	var userParamNames []string
 	var userParamValues []string
+
+	var hashTreeDepth int
+	var pendingWeight float64
+	var activeWeight float64 = 1.0
+	weightMap := make(map[int]float64)
+
+	var inFloatProperty bool
+	var floatPropName string
+	var floatPropNameState bool
+	var floatPropValueState bool
 
 	for {
 		t, err := decoder.Token()
@@ -60,16 +71,28 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			currentTag = se.Name.Local
 			nameAttr = ""
 			testNameAttr := ""
+			enabledAttr := "true"
 			for _, attr := range se.Attr {
 				switch attr.Name.Local {
 				case "name":
 					nameAttr = attr.Value
 				case "testname":
 					testNameAttr = attr.Value
+				case "enabled":
+					enabledAttr = attr.Value
 				}
 			}
-			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup")) {
+			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController") {
 				nameAttr = testNameAttr
+			}
+
+			if currentTag == "hashTree" {
+				hashTreeDepth++
+				if pendingWeight > 0 {
+					weightMap[hashTreeDepth] = pendingWeight
+					activeWeight = pendingWeight
+					pendingWeight = 0
+				}
 			}
 
 			if strings.HasSuffix(currentTag, "ThreadGroup") {
@@ -89,6 +112,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
 						Name:    nameAttr,
 						Request: currentReq,
+						Weight:  activeWeight,
 					})
 				}
 				// Reset sampler-specific URL parts
@@ -110,13 +134,47 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "UserParameters.thread_values":
 					userParamState = "values"
 				}
+			} else if currentTag == "FloatProperty" {
+				inFloatProperty = true
+				floatPropName = ""
+			} else if currentTag == "name" && inFloatProperty {
+				floatPropNameState = true
+			} else if currentTag == "value" && inFloatProperty {
+				floatPropValueState = true
+			} else if currentTag == "ConstantTimer" || currentTag == "UniformRandomTimer" {
+				if enabledAttr != "false" {
+					currentTimer = &domain.Timer{
+						Type: currentTag,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.Timers = append(currentThreadGroup.Timers, currentTimer)
+					}
+				}
 			}
 
 		case xml.EndElement:
-			if se.Name.Local == "HeaderManager" {
+			if se.Name.Local == "hashTree" {
+				delete(weightMap, hashTreeDepth)
+				hashTreeDepth--
+				activeWeight = 1.0
+				for d := hashTreeDepth; d >= 0; d-- {
+					if w, ok := weightMap[d]; ok {
+						activeWeight = w
+						break
+					}
+				}
+			} else if se.Name.Local == "HeaderManager" {
 				inHeaderManager = false
 			} else if se.Name.Local == "ConfigTestElement" {
 				inConfigTestElement = false
+			} else if se.Name.Local == "FloatProperty" {
+				inFloatProperty = false
+			} else if se.Name.Local == "name" && inFloatProperty {
+				floatPropNameState = false
+			} else if se.Name.Local == "value" && inFloatProperty {
+				floatPropValueState = false
+			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
+				currentTimer = nil
 			} else if se.Name.Local == "HTTPSamplerProxy" && currentReq != nil {
 				// Build the URL now. Keep currentReq alive so the following
 				// HeaderManager (inside sibling hashTree) can still attach headers.
@@ -169,6 +227,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			}
 
 			switch currentTag {
+			case "name":
+				if floatPropNameState {
+					floatPropName = val
+				}
+			case "value":
+				if floatPropValueState {
+					if floatPropName == "ThroughputController.percentThroughput" {
+						if v, err := strconv.ParseFloat(val, 64); err == nil {
+							pendingWeight = v
+						}
+					}
+				}
 			case "boolProp":
 				if nameAttr == "HTTPSampler.postBodyRaw" && val == "true" {
 					postBodyRaw = true
@@ -192,6 +262,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						defPath = val
 					} else {
 						pathVal = val
+					}
+				case "ConstantTimer.delay":
+					if currentTimer != nil {
+						currentTimer.Delay = val
+					}
+				case "RandomTimer.range":
+					if currentTimer != nil {
+						currentTimer.Range = val
 					}
 				case "HTTPSampler.protocol":
 					if inConfigTestElement {
@@ -226,6 +304,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "flighttime":
 					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
 						currentThreadGroup.SteppingConfig.HoldDuration = val
+					}
+				case "ThroughputController.maxThroughput":
+					if v, err := strconv.ParseFloat(val, 64); err == nil {
+						pendingWeight = v
 					}
 				case "Argument.name":
 					currentArgName = val

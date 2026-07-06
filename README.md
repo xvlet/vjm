@@ -52,6 +52,20 @@ flowchart LR
 
 ---
 
+## Unsupported JMeter Features (Architectural Limitations)
+
+Because `vjm` translates JMeter's **Thread-based, sequential state** model into Vegeta's **Rate-based, stateless** model, certain JMeter elements that rely heavily on per-thread flow control or inter-request state are inherently unsupported or only partially supported:
+
+*   **Timers (e.g., Constant Timer, Synchronizing Timer)**: Vegeta controls load via a global `-rate` (TPS) rather than per-thread sleeps. Timers are parsed but cannot physically delay individual requests within Vegeta's stateless execution flow.
+*   **Logic Controllers (e.g., If, While, Loop, ForEach)**: Vegeta fires predefined targets continuously. It cannot conditionally branch or loop based on the outcome of a previous request.
+*   **Post-Processors & Extractors (e.g., JSON Extractor)**: `vjm` cannot extract a value from Request A's response (like a token) and dynamically inject it into Request B in real-time, as Vegeta does not support request chaining.
+*   **Stateful Configs (e.g., HTTP Cookie Manager)**: Vegeta does not maintain separate cookie jars or browser-like sessions per worker.
+*   **Assertions**: Vegeta strictly measures HTTP status codes and latencies. It does not inspect response bodies to assert text matches or JSON paths.
+
+*(Instead of sequential state, `vjm` relies on **Multi-Sampler Support (Weights)** to distribute traffic proportionally across multiple independent APIs.)*
+
+---
+
 ## Prerequisites
 
 The following tools must be installed on the machine running `vjm`.
@@ -332,10 +346,10 @@ Error Set:
 ## Roadmap
 
 - [x] **SteppingThreadGroup Support**: Implement JMeter's stepped load increase scenarios
-- [ ] **Multi-Sampler Support**: Handle multiple HTTPSamplers within a ThreadGroup based on weights
+- [x] **Multi-Sampler Support**: Handle multiple HTTPSamplers within a ThreadGroup based on weights
 - [ ] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
 - [ ] **WebSocket Support**: Integrate WS protocol load testing
-- [ ] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
+- [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
 
 ---
 
