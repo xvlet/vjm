@@ -9,11 +9,21 @@ type SteppingConfig struct {
 	HoldDuration  string
 }
 
-// Timer represents JMeter Timer configurations (e.g., ConstantTimer, UniformRandomTimer)
+// ThroughputTimer represents a JMeter Throughput Timer (Constant or Precise)
+type ThroughputTimer struct {
+	Type       string // "ConstantThroughputTimer" or "PreciseThroughputTimer"
+	Throughput string // Target throughput per minute
+}
+
+// Timer represents JMeter Timer configurations
 type Timer struct {
-	Type  string // "ConstantTimer", "UniformRandomTimer"
+	Type  string // "ConstantTimer", "UniformRandomTimer", "GaussianRandomTimer", "PoissonRandomTimer", "SyncTimer"
 	Delay string
 	Range string
+	
+	// SyncTimer specific
+	GroupSize   string
+	TimeoutInMs string
 }
 
 // CSVDataSet represents a CSV Data Set Config element.
@@ -121,6 +131,7 @@ type TestPlan struct {
 	AuthManager          *AuthManager
 	Counters             []*Counter
 	RandomVariables      []*RandomVariable
+	ThroughputTimers     []*ThroughputTimer
 	ThreadGroups         []*ThreadGroup
 }
 
@@ -171,6 +182,7 @@ type ThreadGroup struct {
 	AuthManager     *AuthManager
 	Counters        []*Counter
 	RandomVariables []*RandomVariable
+	ThroughputTimers []*ThroughputTimer
 }
 
 // Sampler represents a JMeter HTTP Sampler

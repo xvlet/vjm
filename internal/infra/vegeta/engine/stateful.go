@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -22,6 +23,69 @@ import (
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
 )
+
+func poissonDelay(lambda float64) float64 {
+	if lambda <= 0 {
+		return 0
+	}
+	L := math.Exp(-lambda)
+	k := 0
+	p := 1.0
+	for p > L {
+		k++
+		p *= rand.Float64()
+	}
+	return float64(k - 1)
+}
+
+type SyncBarrier struct {
+	groupSize int
+	timeout   time.Duration
+	mutex     sync.Mutex
+	count     int
+	release   chan struct{}
+}
+
+func newSyncBarrier(size int, timeoutMs int64) *SyncBarrier {
+	return &SyncBarrier{
+		groupSize: size,
+		timeout:   time.Duration(timeoutMs) * time.Millisecond,
+		release:   make(chan struct{}),
+	}
+}
+
+func (b *SyncBarrier) Wait() {
+	if b.groupSize <= 1 {
+		return
+	}
+	b.mutex.Lock()
+	b.count++
+	if b.count >= b.groupSize {
+		b.count = 0
+		close(b.release)
+		b.release = make(chan struct{})
+		b.mutex.Unlock()
+		return
+	}
+	rel := b.release
+	b.mutex.Unlock()
+
+	if b.timeout > 0 {
+		select {
+		case <-rel:
+		case <-time.After(b.timeout):
+			b.mutex.Lock()
+			if b.release == rel {
+				b.count = 0
+				close(b.release)
+				b.release = make(chan struct{})
+			}
+			b.mutex.Unlock()
+		}
+	} else {
+		<-rel
+	}
+}
 
 type CSVRuntime struct {
 	Config *domain.CSVDataSet
@@ -228,6 +292,22 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 			for _, rv := range plan.ThreadGroups[0].RandomVariables {
 				if !rv.PerThread {
 					sharedRandomVariables = append(sharedRandomVariables, parseRandomVariable(rv))
+				}
+			}
+		}
+
+		syncBarriers := make(map[*domain.Timer]*SyncBarrier)
+		if len(plan.ThreadGroups) > 0 {
+			for _, timer := range plan.ThreadGroups[0].Timers {
+				if timer.Type == "SyncTimer" {
+					sizeStr := globalEval.Evaluate(timer.GroupSize)
+					size, _ := strconv.Atoi(sizeStr)
+					if size == 0 {
+						size = int(a.maxW) // Default to number of workers
+					}
+					timeoutStr := globalEval.Evaluate(timer.TimeoutInMs)
+					timeoutMs, _ := strconv.ParseInt(timeoutStr, 10, 64)
+					syncBarriers[timer] = newSyncBarrier(size, timeoutMs)
 				}
 			}
 		}
@@ -498,6 +578,38 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					for step, sampler := range tg.Samplers {
 						if ctx.Err() != nil || (a.dur > 0 && time.Since(attackStart) >= a.dur) {
 							break
+						}
+
+						// Apply timers BEFORE the sampler runs
+						var totalDelay time.Duration
+						for _, timer := range tg.Timers {
+							delayStr := session.Evaluator.Evaluate(timer.Delay)
+							rangeStr := session.Evaluator.Evaluate(timer.Range)
+							
+							delayMs, _ := strconv.ParseFloat(delayStr, 64)
+							rangeMs, _ := strconv.ParseFloat(rangeStr, 64)
+							
+							var sleepMs float64
+							switch timer.Type {
+							case "ConstantTimer":
+								sleepMs = delayMs
+							case "UniformRandomTimer":
+								sleepMs = delayMs + rand.Float64() * rangeMs
+							case "GaussianRandomTimer":
+								sleepMs = delayMs + math.Abs(rand.NormFloat64()) * rangeMs
+							case "PoissonRandomTimer":
+								sleepMs = delayMs + poissonDelay(rangeMs)
+							case "SyncTimer":
+								if barrier, ok := syncBarriers[timer]; ok {
+									barrier.Wait()
+								}
+							}
+							if sleepMs > 0 {
+								totalDelay += time.Duration(sleepMs) * time.Millisecond
+							}
+						}
+						if totalDelay > 0 {
+							time.Sleep(totalDelay)
 						}
 
 					// Evaluate variables in URL

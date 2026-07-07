@@ -76,6 +76,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentRandomVariable *domain.RandomVariable
 	var currentResultCollector *domain.ResultCollector
 	var currentBackendListener *domain.BackendListener
+	var currentThroughputTimer *domain.ThroughputTimer
 	var inDNSServers bool
 	var inDNSHosts bool
 	var currentStaticHostName string
@@ -180,13 +181,27 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				floatPropNameState = true
 			} else if currentTag == "value" && inFloatProperty {
 				floatPropValueState = true
-			} else if currentTag == "ConstantTimer" || currentTag == "UniformRandomTimer" {
+			} else if currentTag == "doubleProp" {
+				inFloatProperty = true
+				floatPropName = ""
+			} else if currentTag == "ConstantTimer" || currentTag == "UniformRandomTimer" || currentTag == "GaussianRandomTimer" || currentTag == "PoissonRandomTimer" || currentTag == "SyncTimer" {
 				if enabledAttr != "false" {
 					currentTimer = &domain.Timer{
 						Type: currentTag,
 					}
 					if currentThreadGroup != nil {
 						currentThreadGroup.Timers = append(currentThreadGroup.Timers, currentTimer)
+					}
+				}
+			} else if currentTag == "ConstantThroughputTimer" || currentTag == "PreciseThroughputTimer" {
+				if enabledAttr != "false" {
+					currentThroughputTimer = &domain.ThroughputTimer{
+						Type: currentTag,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.ThroughputTimers = append(currentThreadGroup.ThroughputTimers, currentThroughputTimer)
+					} else {
+						plan.ThroughputTimers = append(plan.ThroughputTimers, currentThroughputTimer)
 					}
 				}
 			} else if currentTag == "JSONPostProcessor" {
@@ -331,12 +346,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inHeaderManager = false
 			} else if se.Name.Local == "ConfigTestElement" {
 				inConfigTestElement = false
-			} else if se.Name.Local == "FloatProperty" {
+			} else if se.Name.Local == "FloatProperty" || se.Name.Local == "doubleProp" {
 				inFloatProperty = false
+				floatPropName = ""
 			} else if se.Name.Local == "name" && inFloatProperty {
 				floatPropNameState = false
 			} else if se.Name.Local == "value" && inFloatProperty {
 				floatPropValueState = false
+			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" || se.Name.Local == "GaussianRandomTimer" || se.Name.Local == "PoissonRandomTimer" || se.Name.Local == "SyncTimer" {
+				currentTimer = nil
+			} else if se.Name.Local == "ConstantThroughputTimer" || se.Name.Local == "PreciseThroughputTimer" {
+				currentThroughputTimer = nil
 			} else if se.Name.Local == "JSONPostProcessor" {
 				inJSONExtractor = false
 				if currentJSONExtractor != nil && currentThreadGroup != nil {
@@ -465,9 +485,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 			case "value":
 				if floatPropValueState {
-					if floatPropName == "ThroughputController.percentThroughput" {
+					switch floatPropName {
+					case "ThroughputController.percentThroughput":
 						if v, err := strconv.ParseFloat(val, 64); err == nil {
 							pendingWeight = v
+						}
+					case "throughput":
+						if currentThroughputTimer != nil {
+							currentThroughputTimer.Throughput = val
 						}
 					}
 				}
@@ -529,6 +554,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentCacheManager.MaxSize = v
 					}
 				}
+				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
+					if nameAttr == "groupSize" {
+						currentTimer.GroupSize = val
+					}
+				}
+			case "longProp":
+				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
+					if nameAttr == "timeoutInMs" {
+						currentTimer.TimeoutInMs = val
+					}
+				}
 			case "stringProp":
 				if inUltimateRow {
 					ultimateRowVals = append(ultimateRowVals, val)
@@ -560,6 +596,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "RandomTimer.range":
 					if currentTimer != nil {
 						currentTimer.Range = val
+					}
+				case "timeoutInMs":
+					if currentTimer != nil && currentTimer.Type == "SyncTimer" {
+						currentTimer.TimeoutInMs = val
+					}
+				case "throughput":
+					if currentThroughputTimer != nil {
+						currentThroughputTimer.Throughput = val
 					}
 				case "HTTPSampler.protocol":
 					if inConfigTestElement {

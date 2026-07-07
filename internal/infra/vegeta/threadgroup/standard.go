@@ -3,6 +3,7 @@ package threadgroup
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	vegeta "github.com/tsenart/vegeta/v12/lib"
@@ -19,7 +20,31 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 		return fmt.Errorf("invalid duration: %w", err)
 	}
 
-	pacer := vegeta.ConstantPacer{Freq: config.Rate, Per: time.Second}
+	var pacer vegeta.Pacer
+	pacer = vegeta.ConstantPacer{Freq: config.Rate, Per: time.Second}
+
+	if !config.ForceCLI {
+		var tt *domain.ThroughputTimer
+		if len(plan.ThroughputTimers) > 0 {
+			tt = plan.ThroughputTimers[0]
+		}
+		if len(plan.ThreadGroups) > 0 && len(plan.ThreadGroups[0].ThroughputTimers) > 0 {
+			tt = plan.ThreadGroups[0].ThroughputTimers[0] // ThreadGroup overrides Plan
+		}
+
+		if tt != nil {
+			val := eval.Evaluate(tt.Throughput)
+			throughputPerMin, _ := strconv.ParseFloat(val, 64)
+			if throughputPerMin > 0 {
+				freq := int(throughputPerMin / 60.0)
+				if freq == 0 {
+					freq = 1 // Minimum 1 RPS if defined
+				}
+				pacer = vegeta.ConstantPacer{Freq: freq, Per: time.Second}
+				// TODO: Add PoissonPacer for PreciseThroughputTimer
+			}
+		}
+	}
 
 	return engine.RunSingle(ctx, plan, config, eval, pacer, dur)
 }

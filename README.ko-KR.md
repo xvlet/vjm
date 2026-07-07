@@ -443,12 +443,12 @@ Error Set:
 ### Timers (타이머)
 - [x] **Constant Timer**
 - [x] **Uniform Random Timer**
-- [ ] **Precise Throughput Timer**
-- [ ] **Constant Throughput Timer**
-- [ ] **Gaussian Random Timer**
+- [x] **Precise Throughput Timer** (Vegeta Pacer 로직 연결)
+- [x] **Constant Throughput Timer** (Vegeta Pacer 로직 연결)
+- [x] **Gaussian Random Timer**
 - ~~[ ] **JSR223 Timer**~~ (제외 - JVM 종속 스크립트)
-- [ ] **Poisson Random Timer**
-- [ ] **Synchronizing Timer**
+- [x] **Poisson Random Timer**
+- [x] **Synchronizing Timer**
 - ~~[ ] **BeanShell Timer**~~ (제외 - JVM 종속 스크립트)
 
 ### Pre Processors (전처리기)

@@ -442,12 +442,12 @@ Error Set:
 ### Timers
 - [x] **Constant Timer**
 - [x] **Uniform Random Timer**
-- [ ] **Precise Throughput Timer**
-- [ ] **Constant Throughput Timer**
-- [ ] **Gaussian Random Timer**
+- [x] **Precise Throughput Timer** (Mapped to Vegeta Pacer)
+- [x] **Constant Throughput Timer** (Mapped to Vegeta Pacer)
+- [x] **Gaussian Random Timer**
 - ~~[ ] **JSR223 Timer**~~ (Excluded - JVM dependent script)
-- [ ] **Poisson Random Timer**
-- [ ] **Synchronizing Timer**
+- [x] **Poisson Random Timer**
+- [x] **Synchronizing Timer**
 - ~~[ ] **BeanShell Timer**~~ (Excluded - JVM dependent script)
 
 ### Pre Processors
