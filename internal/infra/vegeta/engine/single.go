@@ -21,9 +21,11 @@ import (
 
 // RunSingle executes a single, constant-rate Vegeta attack stage.
 func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator, pacer vegeta.Pacer, dur time.Duration) error {
-	// Check if this plan requires stateful execution (e.g. Extractors)
-	isStateful := false
+	isStateful := len(plan.CSVDataSets) > 0 || plan.CookieManager != nil || plan.CacheManager != nil || plan.DNSCacheManager != nil || plan.AuthManager != nil || len(plan.Counters) > 0 || len(plan.RandomVariables) > 0
 	for _, tg := range plan.ThreadGroups {
+		if len(tg.CSVDataSets) > 0 || tg.CookieManager != nil || tg.CacheManager != nil || tg.DNSCacheManager != nil || tg.AuthManager != nil || len(tg.Counters) > 0 || len(tg.RandomVariables) > 0 {
+			isStateful = true
+		}
 		for _, s := range tg.Samplers {
 			if len(s.Extractors) > 0 {
 				isStateful = true

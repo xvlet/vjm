@@ -65,6 +65,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var inUltimateRow bool
 	var ultimateRowVals []string
 
+	var currentCSVDataSet *domain.CSVDataSet
+	var currentCookieManager *domain.CookieManager
+	var currentCookie *domain.Cookie
+	var currentCacheManager *domain.CacheManager
+	var currentCounter *domain.Counter
+	var currentDNSCacheManager *domain.DNSCacheManager
+	var currentAuthManager *domain.AuthManager
+	var currentAuthorization *domain.Authorization
+	var currentRandomVariable *domain.RandomVariable
+	var currentResultCollector *domain.ResultCollector
+	var currentBackendListener *domain.BackendListener
+	var inDNSServers bool
+	var inDNSHosts bool
+	var currentStaticHostName string
+
 	for {
 		t, err := decoder.Token()
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -142,6 +157,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				userParamValues = []string{}
 			} else if currentTag == "collectionProp" {
 				switch nameAttr {
+				case "DNSCacheManager.servers":
+					inDNSServers = true
+				case "DNSCacheManager.hosts":
+					inDNSHosts = true
 				case "UserParameters.names":
 					userParamState = "names"
 				case "UserParameters.thread_values":
@@ -176,6 +195,125 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if currentTag == "RegexExtractor" {
 				inRegexExtractor = true
 				currentRegexExtractor = &domain.RegexExtractor{}
+			} else if currentTag == "CSVDataSet" {
+				if enabledAttr != "false" {
+					currentCSVDataSet = &domain.CSVDataSet{
+						Delimiter: ",",
+						Recycle:   true,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.CSVDataSets = append(currentThreadGroup.CSVDataSets, currentCSVDataSet)
+					} else {
+						plan.CSVDataSets = append(plan.CSVDataSets, currentCSVDataSet)
+					}
+				}
+			} else if currentTag == "ResultCollector" {
+				if enabledAttr != "false" {
+					currentResultCollector = &domain.ResultCollector{
+						Name: testNameAttr,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.ResultCollectors = append(currentThreadGroup.ResultCollectors, currentResultCollector)
+					} else {
+						plan.ResultCollectors = append(plan.ResultCollectors, currentResultCollector)
+					}
+				}
+			} else if currentTag == "BackendListener" {
+				if enabledAttr != "false" {
+					currentBackendListener = &domain.BackendListener{
+						Name:      testNameAttr,
+						Arguments: make(map[string]string),
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.BackendListeners = append(currentThreadGroup.BackendListeners, currentBackendListener)
+					} else {
+						plan.BackendListeners = append(plan.BackendListeners, currentBackendListener)
+					}
+				}
+			} else if currentTag == "CookieManager" {
+				if enabledAttr != "false" {
+					currentCookieManager = &domain.CookieManager{}
+					if currentThreadGroup != nil {
+						currentThreadGroup.CookieManager = currentCookieManager
+					} else {
+						plan.CookieManager = currentCookieManager
+					}
+				}
+			} else if currentTag == "CacheManager" {
+				if enabledAttr != "false" {
+					currentCacheManager = &domain.CacheManager{
+						MaxSize: 5000,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.CacheManager = currentCacheManager
+					} else {
+						plan.CacheManager = currentCacheManager
+					}
+				}
+			} else if currentTag == "CounterConfig" {
+				if enabledAttr != "false" {
+					currentCounter = &domain.Counter{
+						Start: "0",
+						Incr:  "1",
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.Counters = append(currentThreadGroup.Counters, currentCounter)
+					} else {
+						plan.Counters = append(plan.Counters, currentCounter)
+					}
+				}
+			} else if currentTag == "DNSCacheManager" {
+				if enabledAttr != "false" {
+					currentDNSCacheManager = &domain.DNSCacheManager{
+						Hosts: make(map[string]string),
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.DNSCacheManager = currentDNSCacheManager
+					} else {
+						plan.DNSCacheManager = currentDNSCacheManager
+					}
+				}
+			} else if currentTag == "AuthManager" {
+				if enabledAttr != "false" {
+					currentAuthManager = &domain.AuthManager{}
+					if currentThreadGroup != nil {
+						currentThreadGroup.AuthManager = currentAuthManager
+					} else {
+						plan.AuthManager = currentAuthManager
+					}
+				}
+			} else if currentTag == "RandomVariableConfig" {
+				if enabledAttr != "false" {
+					currentRandomVariable = &domain.RandomVariable{
+						MinimumValue: "1",
+						MaximumValue: "100",
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.RandomVariables = append(currentThreadGroup.RandomVariables, currentRandomVariable)
+					} else {
+						plan.RandomVariables = append(plan.RandomVariables, currentRandomVariable)
+					}
+				}
+			} else if currentTag == "elementProp" && currentCookieManager != nil {
+				var isCookie bool
+				for _, attr := range se.Attr {
+					if attr.Name.Local == "elementType" && attr.Value == "Cookie" {
+						isCookie = true
+					}
+				}
+				if isCookie {
+					currentCookie = &domain.Cookie{Name: nameAttr}
+				}
+			} else if currentTag == "elementProp" && currentAuthManager != nil {
+				var isAuth bool
+				for _, attr := range se.Attr {
+					if attr.Name.Local == "elementType" && attr.Value == "Authorization" {
+						isAuth = true
+					}
+				}
+				if isAuth {
+					currentAuthorization = &domain.Authorization{}
+				}
 			}
 
 		case xml.EndElement:
@@ -222,6 +360,34 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentRegexExtractor = nil
+			} else if se.Name.Local == "CSVDataSet" {
+				currentCSVDataSet = nil
+			} else if se.Name.Local == "CookieManager" {
+				currentCookieManager = nil
+			} else if se.Name.Local == "CacheManager" {
+				currentCacheManager = nil
+			} else if se.Name.Local == "CounterConfig" {
+				currentCounter = nil
+			} else if se.Name.Local == "DNSCacheManager" {
+				currentDNSCacheManager = nil
+			} else if se.Name.Local == "AuthManager" {
+				currentAuthManager = nil
+			} else if se.Name.Local == "RandomVariableConfig" {
+				currentRandomVariable = nil
+			} else if se.Name.Local == "ResultCollector" {
+				currentResultCollector = nil
+			} else if se.Name.Local == "BackendListener" {
+				currentBackendListener = nil
+			} else if se.Name.Local == "elementProp" && currentCookie != nil {
+				if currentCookieManager != nil {
+					currentCookieManager.Cookies = append(currentCookieManager.Cookies, *currentCookie)
+				}
+				currentCookie = nil
+			} else if se.Name.Local == "elementProp" && currentAuthorization != nil {
+				if currentAuthManager != nil {
+					currentAuthManager.AuthList = append(currentAuthManager.AuthList, *currentAuthorization)
+				}
+				currentAuthorization = nil
 			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
 				currentTimer = nil
 			} else if se.Name.Local == "HTTPSamplerProxy" && currentReq != nil {
@@ -268,6 +434,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				userParamState = ""
 			} else if se.Name.Local == "collectionProp" {
+				inDNSServers = false
+				inDNSHosts = false
 				if inUltimateRow {
 					inUltimateRow = false
 					if currentThreadGroup != nil && currentThreadGroup.UltimateConfig != nil && len(ultimateRowVals) >= 5 {
@@ -306,6 +474,60 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			case "boolProp":
 				if nameAttr == "HTTPSampler.postBodyRaw" && val == "true" {
 					postBodyRaw = true
+				}
+				if currentCSVDataSet != nil {
+					switch nameAttr {
+					case "ignoreFirstLine":
+						currentCSVDataSet.IgnoreFirstLine = (val == "true")
+					case "quotedData":
+						currentCSVDataSet.QuotedData = (val == "true")
+					case "recycle":
+						currentCSVDataSet.Recycle = (val == "true" || val == "") // default true in JMeter
+					case "stopThread":
+						currentCSVDataSet.StopThread = (val == "true")
+					}
+				}
+				if currentCookieManager != nil {
+					if nameAttr == "CookieManager.clearEachIteration" {
+						currentCookieManager.ClearEachIteration = (val == "true")
+					}
+				}
+				if currentCookie != nil && nameAttr == "Cookie.secure" {
+					currentCookie.Secure = (val == "true")
+				}
+				if currentCacheManager != nil {
+					switch nameAttr {
+					case "clearEachIteration":
+						currentCacheManager.ClearEachIteration = (val == "true")
+					case "useExpires":
+						currentCacheManager.UseExpires = (val == "true")
+					}
+				}
+				if currentCounter != nil && nameAttr == "CounterConfig.per_user" {
+					currentCounter.PerUser = (val == "true")
+				}
+				if currentDNSCacheManager != nil {
+					switch nameAttr {
+					case "DNSCacheManager.clearEachIteration":
+						currentDNSCacheManager.ClearEachIteration = (val == "true")
+					case "DNSCacheManager.isCustomResolver":
+						currentDNSCacheManager.IsCustomResolver = (val == "true")
+					}
+				}
+				if currentAuthManager != nil && nameAttr == "AuthManager.clearEachIteration" {
+					currentAuthManager.ClearEachIteration = (val == "true")
+				}
+				if currentRandomVariable != nil && nameAttr == "perThread" {
+					currentRandomVariable.PerThread = (val == "true")
+				}
+				if currentResultCollector != nil && nameAttr == "ResultCollector.error_logging" {
+					currentResultCollector.ErrorLogging = (val == "true")
+				}
+			case "intProp":
+				if currentCacheManager != nil && nameAttr == "maxSize" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentCacheManager.MaxSize = v
+					}
 				}
 			case "stringProp":
 				if inUltimateRow {
@@ -457,7 +679,114 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.DefaultValueStr = val
 					}
+				case "filename":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.Filename = val
+					}
+					if currentResultCollector != nil {
+						currentResultCollector.Filename = val
+					}
+				case "fileEncoding":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.FileEncoding = val
+					}
+				case "variableNames":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.VariableNames = val
+					}
+				case "delimiter":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.Delimiter = val
+					}
+				case "shareMode":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.ShareMode = val
+					}
+				case "Cookie.value":
+					if currentCookie != nil {
+						currentCookie.Value = val
+					}
+				case "Cookie.domain":
+					if currentCookie != nil {
+						currentCookie.Domain = val
+					}
+				case "Cookie.path":
+					if currentCookie != nil {
+						currentCookie.Path = val
+					}
+				case "CounterConfig.start":
+					if currentCounter != nil {
+						currentCounter.Start = val
+					}
+				case "CounterConfig.end":
+					if currentCounter != nil {
+						currentCounter.End = val
+					}
+				case "CounterConfig.incr":
+					if currentCounter != nil {
+						currentCounter.Incr = val
+					}
+				case "CounterConfig.name":
+					if currentCounter != nil {
+						currentCounter.Name = val
+					}
+				case "CounterConfig.format":
+					if currentCounter != nil {
+						currentCounter.Format = val
+					}
+				case "StaticHost.Name":
+					if currentDNSCacheManager != nil && inDNSHosts {
+						currentStaticHostName = val
+					}
+				case "StaticHost.Address":
+					if currentDNSCacheManager != nil && inDNSHosts && currentStaticHostName != "" {
+						currentDNSCacheManager.Hosts[currentStaticHostName] = val
+						currentStaticHostName = ""
+					}
+				case "Authorization.url":
+					if currentAuthorization != nil {
+						currentAuthorization.URL = val
+					}
+				case "Authorization.username":
+					if currentAuthorization != nil {
+						currentAuthorization.Username = val
+					}
+				case "Authorization.password":
+					if currentAuthorization != nil {
+						currentAuthorization.Password = val
+					}
+				case "Authorization.mechanism":
+					if currentAuthorization != nil {
+						currentAuthorization.Mechanism = val
+					}
+				case "maximumValue":
+					if currentRandomVariable != nil {
+						currentRandomVariable.MaximumValue = val
+					}
+				case "minimumValue":
+					if currentRandomVariable != nil {
+						currentRandomVariable.MinimumValue = val
+					}
+				case "outputFormat":
+					if currentRandomVariable != nil {
+						currentRandomVariable.Format = val
+					}
+				case "randomSeed":
+					if currentRandomVariable != nil {
+						currentRandomVariable.RandomSeed = val
+					}
+				case "variableName":
+					if currentRandomVariable != nil {
+						currentRandomVariable.Name = val
+					}
+				case "classname":
+					if currentBackendListener != nil {
+						currentBackendListener.Classname = val
+					}
 				default:
+					if inDNSServers && currentDNSCacheManager != nil {
+						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
+					}
 					// Handle UserParameters variables
 					if inUserParameters {
 						switch userParamState {

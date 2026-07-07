@@ -366,7 +366,7 @@ Error Set:
 - [x] **SteppingThreadGroup 지원**: JMeter의 계단식 부하 증가 시나리오 구현
 - [x] **다중 Sampler 지원**: ThreadGroup 내 여러 HTTPSampler를 가중치 기반으로 처리
 - [x] **Stateful 변수 체이닝 (Extractor)**: 이전 요청의 응답에서 값을 추출하여 다음 요청에 주입하는 순차적 시나리오 지원
-- [ ] **JMeter CSV DataSet 지원**: `CSVDataSet`에서 요청별 다른 파라미터 주입
+- [x] **JMeter CSV DataSet 지원**: `CSVDataSet`에서 요청별 다른 파라미터 주입
 - [ ] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
 - [x] **실시간 콘솔 대시보드**: 테스트 진행 중 실시간 TPS / 응답시간 모니터링
 
@@ -381,34 +381,53 @@ Error Set:
 - [ ] **setUp Thread Group**
 - [ ] **tearDown Thread Group**
 
+### Logic Controllers (논리 컨트롤러)
+- [ ] **If Controller**
+- [ ] **Transaction Controller**
+- [ ] **Loop Controller**
+- [ ] **While Controller**
+- [ ] **Critical Section Controller**
+- [ ] **ForEach Controller**
+- [ ] **Include Controller**
+- [ ] **Interleave Controller**
+- [ ] **Once Only Controller**
+- [ ] **Random Controller**
+- [ ] **Random Order Controller**
+- [ ] **Recording Controller**
+- [ ] **Runtime Controller**
+- [ ] **Simple Controller**
+- [x] **Throughput Controller**
+- [ ] **Module Controller**
+- [ ] **Switch Controller**
+
 ### Config Elements (설정 요소)
 - [x] **HTTP Header Manager**
 - [x] **HTTP Request Defaults**
 - [x] **User Defined Variables**
-- [ ] **CSV Data Set Config**
-- [ ] **HTTP Cookie Manager**
-- [ ] **HTTP Cache Manager**
-- [ ] **Bolt Connection Configuration**
-- [ ] **Counter**
-- [ ] **DNS Cache Manager**
-- [ ] **FTP Request Defaults**
-- [ ] **HTTP Authorization Manager**
-- [ ] **JDBC Connection Configuration**
-- [ ] **Java Request Defaults**
-- [ ] **Keystore Configuration**
-- [ ] **LDAP Extended Request Defaults**
-- [ ] **LDAP Request Defaults**
-- [ ] **Login Config Element**
-- [ ] **Random Variable**
+- [x] **CSV Data Set Config**
+- [x] **HTTP Cookie Manager**
+- [x] **HTTP Cache Manager**
+- ~~[ ] **Bolt Connection Configuration**~~ (제외 - JVM 종속)
+- [x] **Counter**
+- [x] **DNS Cache Manager**
+- ~~[ ] **FTP Request Defaults**~~ (제외 - 비 HTTP)
+- [x] **HTTP Authorization Manager**
+- ~~[ ] **JDBC Connection Configuration**~~ (제외 - JVM 종속)
+- ~~[ ] **Java Request Defaults**~~ (제외 - JVM 종속)
+- ~~[ ] **Keystore Configuration**~~ (제외 - JVM 종속)
+- ~~[ ] **LDAP Extended Request Defaults**~~ (제외 - JVM 종속)
+- ~~[ ] **LDAP Request Defaults**~~ (제외 - JVM 종속)
+- ~~[ ] **Login Config Element**~~ (제외 - 비 HTTP 전용)
+- [x] **Random Variable**
 - [ ] **Simple Config Element**
-- [ ] **TCP Sampler Config**
+- ~~[ ] **TCP Sampler Config**~~ (제외 - 비 HTTP)
 
 ### Listeners (리스너)
-- [ ] **View Results Tree**
-- [ ] **Summary Report**
-- [ ] **Aggregate Report**
-- [ ] **Backend Listener**
-- [ ] **Aggregate Graph**
+- [x] **View Results Tree** (GUI 렌더링 제외, 파일 출력 전용)
+- [x] **Summary Report** (GUI 렌더링 제외, 파일 출력 전용)
+- [x] **Aggregate Report** (GUI 렌더링 제외, 파일 출력 전용)
+- [x] **Backend Listener** (파싱 완료, 외부 DB 연동은 추후 확장)
+- [x] **Aggregate Graph** (GUI 렌더링 제외, 파일 출력 전용)
 - [ ] **Assertion Results**
 - [ ] **Comparison Assertion Visualizer**
 - [ ] **Generate Summary Results**
@@ -427,10 +446,10 @@ Error Set:
 - [ ] **Precise Throughput Timer**
 - [ ] **Constant Throughput Timer**
 - [ ] **Gaussian Random Timer**
-- [ ] **JSR223 Timer**
+- ~~[ ] **JSR223 Timer**~~ (제외 - JVM 종속 스크립트)
 - [ ] **Poisson Random Timer**
 - [ ] **Synchronizing Timer**
-- [ ] **BeanShell Timer**
+- ~~[ ] **BeanShell Timer**~~ (제외 - JVM 종속 스크립트)
 
 ### Pre Processors (전처리기)
 - [x] **User Parameters**

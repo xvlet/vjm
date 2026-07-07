@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"os"
+
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
 )
@@ -64,6 +67,49 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 	err = u.reporter.ConvertToJTL(config.ResultBinPath, config.ResultJtlPath)
 	if err != nil {
 		return fmt.Errorf("JTL conversion failed: %w", err)
+	}
+
+	// Helper function to copy JTL file
+	copyFile := func(src, dst string) error {
+		if src == dst {
+			return nil
+		}
+		source, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = source.Close() }()
+
+		destination, err := os.Create(dst)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = destination.Close() }()
+
+		_, err = io.Copy(destination, source)
+		return err
+	}
+
+	// Output to files specified in ResultCollectors (Listeners)
+	for _, rc := range plan.ResultCollectors {
+		if rc.Filename != "" {
+			log.Printf("[Usecase] Generating listener output: %s", rc.Filename)
+			if err := copyFile(config.ResultJtlPath, rc.Filename); err != nil {
+				log.Printf("[WARNING] Failed to write listener output to %s: %v", rc.Filename, err)
+			}
+		}
+	}
+
+	// Also check ThreadGroup-level listeners
+	for _, tg := range plan.ThreadGroups {
+		for _, rc := range tg.ResultCollectors {
+			if rc.Filename != "" {
+				log.Printf("[Usecase] Generating listener output: %s", rc.Filename)
+				if err := copyFile(config.ResultJtlPath, rc.Filename); err != nil {
+					log.Printf("[WARNING] Failed to write listener output to %s: %v", rc.Filename, err)
+				}
+			}
+		}
 	}
 
 	if config.ReportDirPath != "" {

@@ -367,7 +367,7 @@ Error Set:
 - [x] **SteppingThreadGroup Support**: Implement JMeter's stepped load increase scenarios
 - [x] **Multi-Sampler Support**: Handle multiple HTTPSamplers within a ThreadGroup based on weights
 - [x] **Stateful Variable Chaining (Extractors)**: Support sequential scenarios by extracting values from previous responses and injecting them into subsequent requests
-- [ ] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
+- [x] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
 - [ ] **WebSocket Support**: Integrate WS protocol load testing
 - [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
 
@@ -380,34 +380,53 @@ Error Set:
 - [ ] **setUp Thread Group**
 - [ ] **tearDown Thread Group**
 
+### Logic Controllers
+- [ ] **If Controller**
+- [ ] **Transaction Controller**
+- [ ] **Loop Controller**
+- [ ] **While Controller**
+- [ ] **Critical Section Controller**
+- [ ] **ForEach Controller**
+- [ ] **Include Controller**
+- [ ] **Interleave Controller**
+- [ ] **Once Only Controller**
+- [ ] **Random Controller**
+- [ ] **Random Order Controller**
+- [ ] **Recording Controller**
+- [ ] **Runtime Controller**
+- [ ] **Simple Controller**
+- [x] **Throughput Controller**
+- [ ] **Module Controller**
+- [ ] **Switch Controller**
+
 ### Config Elements
 - [x] **HTTP Header Manager**
 - [x] **HTTP Request Defaults**
 - [x] **User Defined Variables**
-- [ ] **CSV Data Set Config**
-- [ ] **HTTP Cookie Manager**
-- [ ] **HTTP Cache Manager**
-- [ ] **Bolt Connection Configuration**
-- [ ] **Counter**
-- [ ] **DNS Cache Manager**
-- [ ] **FTP Request Defaults**
-- [ ] **HTTP Authorization Manager**
-- [ ] **JDBC Connection Configuration**
-- [ ] **Java Request Defaults**
-- [ ] **Keystore Configuration**
-- [ ] **LDAP Extended Request Defaults**
-- [ ] **LDAP Request Defaults**
-- [ ] **Login Config Element**
-- [ ] **Random Variable**
+- [x] **CSV Data Set Config**
+- [x] **HTTP Cookie Manager**
+- [x] **HTTP Cache Manager**
+- ~~[ ] **Bolt Connection Configuration**~~ (Excluded - JVM dependent)
+- [x] **Counter**
+- [x] **DNS Cache Manager**
+- ~~[ ] **FTP Request Defaults**~~ (Excluded - Non HTTP)
+- [x] **HTTP Authorization Manager**
+- ~~[ ] **JDBC Connection Configuration**~~ (Excluded - JVM dependent)
+- ~~[ ] **Java Request Defaults**~~ (Excluded - JVM dependent)
+- ~~[ ] **Keystore Configuration**~~ (Excluded - JVM dependent)
+- ~~[ ] **LDAP Extended Request Defaults**~~ (Excluded - JVM dependent)
+- ~~[ ] **LDAP Request Defaults**~~ (Excluded - JVM dependent)
+- ~~[ ] **Login Config Element**~~ (Excluded - Non HTTP)
+- [x] **Random Variable**
 - [ ] **Simple Config Element**
-- [ ] **TCP Sampler Config**
+- ~~[ ] **TCP Sampler Config**~~ (Excluded - Non HTTP)
 
 ### Listeners
-- [ ] **View Results Tree**
-- [ ] **Summary Report**
-- [ ] **Aggregate Report**
-- [ ] **Backend Listener**
-- [ ] **Aggregate Graph**
+- [x] **View Results Tree** (File output only)
+- [x] **Summary Report** (File output only)
+- [x] **Aggregate Report** (File output only)
+- [x] **Backend Listener** (Parsed, DB logic pending)
+- [x] **Aggregate Graph** (File output only)
 - [ ] **Assertion Results**
 - [ ] **Comparison Assertion Visualizer**
 - [ ] **Generate Summary Results**
@@ -426,10 +445,10 @@ Error Set:
 - [ ] **Precise Throughput Timer**
 - [ ] **Constant Throughput Timer**
 - [ ] **Gaussian Random Timer**
-- [ ] **JSR223 Timer**
+- ~~[ ] **JSR223 Timer**~~ (Excluded - JVM dependent script)
 - [ ] **Poisson Random Timer**
 - [ ] **Synchronizing Timer**
-- [ ] **BeanShell Timer**
+- ~~[ ] **BeanShell Timer**~~ (Excluded - JVM dependent script)
 
 ### Pre Processors
 - [x] **User Parameters**
