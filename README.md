@@ -253,6 +253,34 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 | `${__P(key,default)}` | References a properties value | `${__P(target.host,localhost)}` |
 | `${__eval(expr)}` | Re-evaluates an expression | `${__eval(${myVar})}` |
 | `${__FileToString(path)}` | Loads file contents as a string | `${__FileToString(body.json)}` |
+| `${__UUID()}` | Generates a UUID v4 | `${__UUID()}` |
+| `${__property(key,var,def)}` | References a property (can be saved) | `${__property(target.host,MYVAR,localhost)}` |
+| `${__V(varName,def)}` | Evaluates a variable name | `${__V(A_${N})}` |
+| `${__Random(min,max,var)}` | Generates a random integer | `${__Random(1,100,MYVAR)}` |
+| `${__intSum(a,b,var)}` | Adds multiple integers | `${__intSum(2,5,MYVAR)}` |
+| `${__longSum(a,b,var)}` | Adds multiple long integers | `${__longSum(2,5,MYVAR)}` |
+| `${__urlencode(str)}` | URL encodes a string | `${__urlencode(${myVar})}` |
+| `${__urldecode(str)}` | URL decodes a string | `${__urldecode(${myVar})}` |
+| `${__toLowerCase(str,var)}` | Converts string to lowercase | `${__toLowerCase(HELLO)}` |
+| `${__toUpperCase(str,var)}` | Converts string to uppercase | `${__toUpperCase(hello)}` |
+| `${__escapeHtml(str)}` | Escapes HTML characters | `${__escapeHtml(<b>Test</b>)}` |
+| `${__unescapeHtml(str)}` | Unescapes HTML characters | `${__unescapeHtml(&lt;b&gt;Test&lt;/b&gt;)}` |
+| `${__machineIP()}` | Returns local IP address | `${__machineIP()}` |
+| `${__machineName()}` | Returns local host name | `${__machineName()}` |
+| `${__md5(str,var)}` | Computes MD5 hash | `${__md5(hello)}` |
+| `${__digest(algo,str,salt,upper,var)}` | Computes hash (MD5, SHA-1, SHA-256, SHA-512) | `${__digest(SHA-256,hello)}` |
+| `${__split(str,var,delim)}` | Splits string into variables | `${__split(a\,b\,c,MYVAR,\,)}` |
+| `${__dateTimeConvert(date,src,tgt,var)}` | Converts date format | `${__dateTimeConvert(01012026,ddMMyyyy,yyyy-MM-dd)}` |
+| `${__substring(str,begin,end,var)}` | Returns substring | `${__substring(hello,0,2)}` |
+| `${__isPropDefined(key)}` | Tests if property exists | `${__isPropDefined(target)}` |
+| `${__isVarDefined(var)}` | Tests if variable exists | `${__isVarDefined(MYVAR)}` |
+| `${__setProperty(key,val,ret)}` | Sets property value | `${__setProperty(target,localhost,false)}` |
+| `${__counter(TRUE/FALSE,var)}` | Global or per-thread counter | `${__counter(FALSE,MYVAR)}` |
+| `${__CSVRead(file,col|next)}` | Reads CSV column | `${__CSVRead(test.csv,0)}` |
+| `${__evalVar(var)}` | Evaluates expression in variable | `${__evalVar(MYVAR)}` |
+| `${__changeCase(str,mode,var)}` | Changes case (UPPER/LOWER/CAPITALIZE) | `${__changeCase(hello,UPPER)}` |
+| `${__char(num...)}` | Generates Unicode char from number | `${__char(0x41)}` |
+| `${__XPath(file,expr)}` | Use an XPath expression to read from a file | `${__XPath(data.xml,//node)}` |
 | `${varName}` | Variable reference | `${target.host}` |
 
 ---

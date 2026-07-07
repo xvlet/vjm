@@ -32,6 +32,20 @@ type ConcurrencyConfig struct {
 	Unit        string
 }
 
+// UltimateScheduleRecord represents one row in the Ultimate Thread Group schedule.
+type UltimateScheduleRecord struct {
+	StartThreads string
+	InitialDelay string
+	StartupTime  string
+	HoldLoadFor  string
+	ShutdownTime string
+}
+
+// UltimateConfig represents the properties of an Ultimate Thread Group.
+type UltimateConfig struct {
+	Records []UltimateScheduleRecord
+}
+
 // ThreadGroup represents a JMeter Thread Group.
 // NumThreads, RampUp, and Duration are parsed from the JMX but not yet used by the runner.
 // These will be leveraged in a future enhancement to support stepped load (e.g. SteppingThreadGroup)
@@ -44,6 +58,7 @@ type ThreadGroup struct {
 	Samplers       []*Sampler
 	SteppingConfig *SteppingConfig
 	ConcurrencyConfig *ConcurrencyConfig
+	UltimateConfig *UltimateConfig
 	OpenModelSchedule string // JMeter 5.5+ Open Model Thread Group DSL schedule
 	Timers         []*Timer
 }

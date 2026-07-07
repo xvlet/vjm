@@ -252,6 +252,34 @@ testdata=test
 | `${__P(key,default)}` | properties 값 참조 | `${__P(target.host,localhost)}` |
 | `${__eval(expr)}` | 표현식 재평가 | `${__eval(${myVar})}` |
 | `${__FileToString(path)}` | 파일 내용을 문자열로 로드 | `${__FileToString(body.json)}` |
+| `${__UUID()}` | UUID v4 생성 | `${__UUID()}` |
+| `${__property(key,var,def)}` | properties 값 참조 (변수 저장 가능) | `${__property(target.host,MYVAR,localhost)}` |
+| `${__V(varName,def)}` | 변수명 평가 | `${__V(A_${N})}` |
+| `${__Random(min,max,var)}` | 지정 범위 내 랜덤 정수 생성 | `${__Random(1,100,MYVAR)}` |
+| `${__intSum(a,b,var)}` | 32비트 정수 합 계산 | `${__intSum(2,5,MYVAR)}` |
+| `${__longSum(a,b,var)}` | 64비트 정수 합 계산 | `${__longSum(2,5,MYVAR)}` |
+| `${__urlencode(str)}` | URL 인코딩 | `${__urlencode(${myVar})}` |
+| `${__urldecode(str)}` | URL 디코딩 | `${__urldecode(${myVar})}` |
+| `${__toLowerCase(str,var)}` | 소문자 변환 | `${__toLowerCase(HELLO)}` |
+| `${__toUpperCase(str,var)}` | 대문자 변환 | `${__toUpperCase(hello)}` |
+| `${__escapeHtml(str)}` | HTML 특수문자 이스케이프 | `${__escapeHtml(<b>Test</b>)}` |
+| `${__unescapeHtml(str)}` | HTML 특수문자 디코딩 | `${__unescapeHtml(&lt;b&gt;Test&lt;/b&gt;)}` |
+| `${__machineIP()}` | 로컬 IP 주소 반환 | `${__machineIP()}` |
+| `${__machineName()}` | 로컬 호스트 이름 반환 | `${__machineName()}` |
+| `${__md5(str,var)}` | MD5 해시 계산 | `${__md5(hello)}` |
+| `${__digest(algo,str,salt,upper,var)}` | 해시 계산 (MD5, SHA-1, SHA-256, SHA-512) | `${__digest(SHA-256,hello)}` |
+| `${__split(str,var,delim)}` | 문자열 분리 후 변수 저장 | `${__split(a\,b\,c,MYVAR,\,)}` |
+| `${__dateTimeConvert(date,src,tgt,var)}` | 날짜 형식 변환 | `${__dateTimeConvert(01012026,ddMMyyyy,yyyy-MM-dd)}` |
+| `${__substring(str,begin,end,var)}` | 부분 문자열 추출 | `${__substring(hello,0,2)}` |
+| `${__isPropDefined(key)}` | Property 존재 여부 확인 | `${__isPropDefined(target)}` |
+| `${__isVarDefined(var)}` | 변수 존재 여부 확인 | `${__isVarDefined(MYVAR)}` |
+| `${__setProperty(key,val,ret)}` | Property 설정 | `${__setProperty(target,localhost,false)}` |
+| `${__counter(TRUE/FALSE,var)}` | 전역/쓰레드별 카운터 | `${__counter(FALSE,MYVAR)}` |
+| `${__CSVRead(file,col|next)}` | CSV 파일 컬럼 읽기 | `${__CSVRead(test.csv,0)}` |
+| `${__evalVar(var)}` | 변수에 저장된 표현식 평가 | `${__evalVar(MYVAR)}` |
+| `${__changeCase(str,mode,var)}` | 대소문자 변환 (UPPER/LOWER/CAPITALIZE) | `${__changeCase(hello,UPPER)}` |
+| `${__char(num...)}` | 숫자로부터 유니코드 문자 생성 | `${__char(0x41)}` |
+| `${__XPath(file,expr)}` | 파일에서 XPath 표현식으로 값 추출 | `${__XPath(data.xml,//node)}` |
 | `${varName}` | 변수 참조 | `${target.host}` |
 
 ---

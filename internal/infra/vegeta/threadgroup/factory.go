@@ -6,6 +6,9 @@ import (
 
 // GetRunner returns the appropriate Runner for the given thread group
 func GetRunner(tg *domain.ThreadGroup) Runner {
+	if tg.UltimateConfig != nil {
+		return &UltimateRunner{}
+	}
 	if tg.SteppingConfig != nil {
 		return &SteppingRunner{}
 	}

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.5">
+    <hashTree>
+        <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true" />
+        <hashTree>
+            <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group"
+                enabled="true">
+                <stringProp name="ThreadGroup.num_threads">1</stringProp>
+            </ThreadGroup>
+            <hashTree>
+                <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy"
+                    testname="Crypto Util Request" enabled="true">
+                    <stringProp name="HTTPSampler.domain">localhost</stringProp>
+                    <stringProp name="HTTPSampler.port">58080</stringProp>
+                    <stringProp name="HTTPSampler.protocol">http</stringProp>
+                    <stringProp name="HTTPSampler.path">/test?time=${__time()}&amp;date=${__dateTimeConvert(01012026,ddMMyyyy,yyyy-MM-dd)}&amp;uuid=${__UUID()}&amp;md5=${__md5(hello)}&amp;digest=${__digest(SHA-256,hello)}&amp;escHtml=${__escapeHtml(&lt;b&gt;bold&lt;/b&gt;)}&amp;urlEnc=${__urlencode(hello
+                        world)}</stringProp>
+                    <stringProp name="HTTPSampler.method">GET</stringProp>
+                </HTTPSamplerProxy>
+                <hashTree>
+                    <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager"
+                        testname="HTTP Header Manager" enabled="true">
+                        <collectionProp name="HeaderManager.headers">
+                            <elementProp name="" elementType="Header">
+                                <stringProp name="Header.name">X-Unescape-Html</stringProp>
+                                <stringProp name="Header.value">
+                                    ${__unescapeHtml(&amp;lt;b&amp;gt;bold&amp;lt;/b&amp;gt;)}</stringProp>
+                            </elementProp>
+                            <elementProp name="" elementType="Header">
+                                <stringProp name="Header.name">X-Url-Decoded</stringProp>
+                                <stringProp name="Header.value">${__urldecode(hello%20world)}</stringProp>
+                            </elementProp>
+                            <elementProp name="" elementType="Header">
+                                <stringProp name="Header.name">X-Machine-IP</stringProp>
+                                <stringProp name="Header.value">${__machineIP()}</stringProp>
+                            </elementProp>
+                            <elementProp name="" elementType="Header">
+                                <stringProp name="Header.name">X-Machine-Name</stringProp>
+                                <stringProp name="Header.value">${__machineName()}</stringProp>
+                            </elementProp>
+                        </collectionProp>
+                    </HeaderManager>
+                    <hashTree />
+                </hashTree>
+            </hashTree>
+        </hashTree>
+    </hashTree>
+</jmeterTestPlan>

@@ -61,6 +61,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJSONExtractor *domain.JSONExtractor
 	var currentRegexExtractor *domain.RegexExtractor
 
+	var inUltimateData bool
+	var inUltimateRow bool
+	var ultimateRowVals []string
+
 	for {
 		t, err := decoder.Token()
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -108,6 +112,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					currentThreadGroup.SteppingConfig = &domain.SteppingConfig{}
 				case "com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup":
 					currentThreadGroup.ConcurrencyConfig = &domain.ConcurrencyConfig{}
+				case "kg.apc.jmeter.threads.UltimateThreadGroup":
+					currentThreadGroup.UltimateConfig = &domain.UltimateConfig{}
 				}
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
@@ -140,6 +146,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					userParamState = "names"
 				case "UserParameters.thread_values":
 					userParamState = "values"
+				case "ultimatethreadgroupdata":
+					inUltimateData = true
+				default:
+					if inUltimateData {
+						inUltimateRow = true
+						ultimateRowVals = []string{}
+					}
 				}
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
@@ -254,6 +267,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					plan.UserDefinedVariables[userParamNames[i]] = userParamValues[i]
 				}
 				userParamState = ""
+			} else if se.Name.Local == "collectionProp" {
+				if inUltimateRow {
+					inUltimateRow = false
+					if currentThreadGroup != nil && currentThreadGroup.UltimateConfig != nil && len(ultimateRowVals) >= 5 {
+						currentThreadGroup.UltimateConfig.Records = append(currentThreadGroup.UltimateConfig.Records, domain.UltimateScheduleRecord{
+							StartThreads: ultimateRowVals[0],
+							InitialDelay: ultimateRowVals[1],
+							StartupTime:  ultimateRowVals[2],
+							HoldLoadFor:  ultimateRowVals[3],
+							ShutdownTime: ultimateRowVals[4],
+						})
+					}
+				} else if inUltimateData {
+					inUltimateData = false
+				}
 			}
 
 		case xml.CharData:
@@ -280,6 +308,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					postBodyRaw = true
 				}
 			case "stringProp":
+				if inUltimateRow {
+					ultimateRowVals = append(ultimateRowVals, val)
+					continue
+				}
 				switch nameAttr {
 				case "HTTPSampler.domain":
 					if inConfigTestElement {

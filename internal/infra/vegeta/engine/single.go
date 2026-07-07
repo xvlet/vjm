@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -111,6 +112,9 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 
 			reqTemplate := sampler.Request
 			evalURL := eval.Evaluate(reqTemplate.URL)
+			evalURL = strings.ReplaceAll(evalURL, "\n", "%0A")
+			evalURL = strings.ReplaceAll(evalURL, "\r", "%0D")
+			evalURL = strings.ReplaceAll(evalURL, " ", "%20")
 			evalBody := eval.Evaluate(reqTemplate.BodyTemplate)
 			
 			tgt.Method = reqTemplate.Method
@@ -175,6 +179,9 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 
 		if res.Error != "" || res.Code >= 400 || res.Code == 0 {
 			intervalErrors.Add(1)
+			if intervalErrors.Load() == 1 {
+				log.Printf("[DEBUG] First error encountered: code=%d, err=%s, url=%s", res.Code, res.Error, res.URL)
+			}
 		}
 
 		select {
