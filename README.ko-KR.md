@@ -12,8 +12,8 @@
 <p align="center">
   <a href="https://github.com/xvlet/vjm"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
   <a href="https://github.com/xvlet/vjm/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20AIX-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Arch-amd64%20%7C%20ppc64-blueviolet?style=for-the-badge" alt="Architecture">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20AIX-lightgrey?style=for-the-badge" alt="Platform">
+  <img src="https://img.shields.io/badge/Arch-amd64%20%7C%20arm64%20%7C%20ppc64-blueviolet?style=for-the-badge" alt="Architecture">
   <img src="https://img.shields.io/badge/CGO-Disabled-orange?style=for-the-badge" alt="CGO Disabled">
 </p>
 
@@ -45,7 +45,7 @@ flowchart LR
 <tr><td><b>JTL 자동 변환</b></td><td>Vegeta 결과(binary <code>.bin</code>)를 JMeter가 읽을 수 있는 CSV JTL 포맷으로 자동 변환</td></tr>
 <tr><td><b>JMeter HTML 리포트</b></td><td>변환된 JTL로 JMeter의 대시보드 HTML 리포트를 자동 생성</td></tr>
 <tr><td><b>리포트 단독 생성 모드</b></td><td>기존 <code>.bin</code> 또는 <code>.jtl</code> 파일로 언제든 리포트만 별도로 재생성 가능</td></tr>
-<tr><td><b>단일 바이너리 배포</b></td><td>CGO 비활성화, 외부 라이브러리 의존성 없음. Linux(amd64)와 AIX(ppc64) 크로스 빌드 지원</td></tr>
+<tr><td><b>단일 바이너리 배포</b></td><td>CGO 비활성화, 외부 라이브러리 의존성 없음. Linux, macOS, Windows (amd64, arm64) 및 AIX(ppc64) 크로스 빌드 지원</td></tr>
 <tr><td><b>.properties 파일 지원</b></td><td>JMeter 스타일의 <code>.properties</code> 파일을 여러 개 지정하여 환경별 파라미터를 쉽게 관리</td></tr>
 </table>
 
@@ -55,12 +55,10 @@ flowchart LR
 
 `vjm`은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 Vegeta의 **"비율(Rate) 기반의 무상태(Stateless) 모델"**로 변환하여 부하를 발생시킵니다. 따라서 쓰레드별 제어나 개별 요청 간의 상태 전이에 크게 의존하는 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
 
-*   **타이머 (Constant Timer, Synchronizing Timer 등)**: Vegeta는 전체적인 초당 발송량(`-rate`)으로만 속도를 제어하며, 개별 쓰레드가 요청과 요청 사이에 특정 밀리초(ms)만큼 대기(Sleep)하도록 물리적으로 지연시킬 수 없습니다. (JMX 파싱은 되나 실제 부하 발생 시에는 지연으로 동작하지 않음)
-*   **흐름 제어 로직 (If, While, Loop, ForEach Controller)**: Vegeta는 준비된 타겟들을 무한히 병렬로 발사하는 엔진이므로, 이전 요청의 응답 결과에 따라 다음 요청을 조건부로 분기하거나 루프를 제어할 수 없습니다.
-*   **상태 유지 설정 (HTTP Cookie Manager 등)**: 워커(Worker)별로 별도의 쿠키 세션 스토리지를 관리하여 브라우저의 세션을 흉내내지 않습니다. (단, Extractor를 활용한 변수 체이닝은 지원합니다)
-*   **응답 검증 (Assertions)**: 응답 본문(Body)을 파싱하여 특정 텍스트나 JSON 경로가 포함되어 있는지 검증(Assert)하지 않으며, 오직 HTTP Status Code와 Latency 지표만 측정합니다.
+*   **복잡한 흐름 제어 로직 (If, While, Loop, ForEach Controller 등)**: Vegeta는 준비된 타겟들을 병렬로 발사하는 엔진이므로, 이전 요청의 응답 결과에 따라 다음 요청을 조건부로 분기하거나 동적으로 루프를 제어할 수 없습니다.
+*   **JVM 종속 요소 (JSR223, BeanShell, JDBC 등)**: `vjm`은 Go 언어로 작성된 네이티브 애플리케이션이므로 Java 가상 머신(JVM)을 내장하지 않습니다. 따라서 Java 스크립트 실행이나 JDBC 드라이버가 필요한 요소는 지원하지 않습니다.
 
-*(순차적 상태 시나리오의 경우, `vjm`은 Extractor가 포함된 시나리오에 한해 자체적인 StatefulAttacker 모드로 전환하여 동작하며, 기본적으로는 **Multi-Sampler 가중치(Weight) 분배**를 통해 여러 API에 비율대로 트래픽을 분산하는 데 최적화되어 있습니다.)*
+*(참고: Extractor를 활용한 변수 체이닝, HTTP Cookie Manager, 각종 Timer 및 Assertion(검증) 기능 등 필수적인 상태 유지 및 제어 기능들은 `vjm`의 자체적인 Stateful 엔진 모드를 통해 현재 완벽하게 지원됩니다.)*
 
 ---
 
@@ -105,18 +103,18 @@ chmod +x vjm
 git clone https://github.com/xvlet/vjm.git
 cd vjm
 
-# Linux (amd64) 빌드
-make linux
+# 특정 플랫폼 빌드 (예: Linux amd64)
+make linux_amd64
 
-# AIX (ppc64) 크로스 빌드
-make aix
+# 기타 지원 타겟:
+# linux_arm64, darwin_amd64, darwin_arm64, windows_amd64, windows_arm64, aix_ppc64
 
-# 전체 빌드 (Linux + AIX)
+# 모든 지원 플랫폼 전체 빌드
 make all
 
 # 빌드 결과물 위치
 ls build/
-# vjm_linux   vjm_aix
+# vjm_linux_amd64.tar.gz   vjm_windows_amd64.zip   ...
 ```
 
 ### 수동 빌드

@@ -12,8 +12,8 @@
 <p align="center">
   <a href="https://github.com/xvlet/vjm"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
   <a href="https://github.com/xvlet/vjm/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20AIX-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Arch-amd64%20%7C%20ppc64-blueviolet?style=for-the-badge" alt="Architecture">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20AIX-lightgrey?style=for-the-badge" alt="Platform">
+  <img src="https://img.shields.io/badge/Arch-amd64%20%7C%20arm64%20%7C%20ppc64-blueviolet?style=for-the-badge" alt="Architecture">
   <img src="https://img.shields.io/badge/CGO-Disabled-orange?style=for-the-badge" alt="CGO Disabled">
   <a href="README.ko-KR.md"><img src="https://img.shields.io/badge/Lang-한국어-red?style=for-the-badge" alt="Korean"></a>
 </p>
@@ -46,7 +46,7 @@ flowchart LR
 <tr><td><b>Automatic JTL Conversion</b></td><td>Automatically converts Vegeta's binary results (<code>.bin</code>) into JMeter-readable CSV JTL format.</td></tr>
 <tr><td><b>JMeter HTML Reports</b></td><td>Automatically generates JMeter dashboard HTML reports using the converted JTL.</td></tr>
 <tr><td><b>Report-Only Mode</b></td><td>Regenerate reports independently at any time using existing <code>.bin</code> or <code>.jtl</code> files.</td></tr>
-<tr><td><b>Single Binary Distribution</b></td><td>CGO disabled, no external library dependencies. Supports cross-compilation for Linux (amd64) and AIX (ppc64).</td></tr>
+<tr><td><b>Single Binary Distribution</b></td><td>CGO disabled, no external library dependencies. Supports cross-compilation for Linux, macOS, Windows (amd64, arm64) and AIX (ppc64).</td></tr>
 <tr><td><b>.properties File Support</b></td><td>Easily manage environment-specific parameters by specifying multiple JMeter-style <code>.properties</code> files.</td></tr>
 </table>
 
@@ -56,12 +56,10 @@ flowchart LR
 
 Because `vjm` translates JMeter's **Thread-based, sequential state** model into Vegeta's **Rate-based, stateless** model, certain JMeter elements that rely heavily on per-thread flow control or inter-request state are inherently unsupported or only partially supported:
 
-*   **Timers (e.g., Constant Timer, Synchronizing Timer)**: Vegeta controls load via a global `-rate` (TPS) rather than per-thread sleeps. Timers are parsed but cannot physically delay individual requests within Vegeta's stateless execution flow.
-*   **Logic Controllers (e.g., If, While, Loop, ForEach)**: Vegeta fires predefined targets continuously. It cannot conditionally branch or loop based on the outcome of a previous request.
-*   **Stateful Configs (e.g., HTTP Cookie Manager)**: Vegeta does not maintain separate cookie jars or browser-like sessions per worker. (However, variable chaining using Extractors is supported)
-*   **Assertions**: Vegeta strictly measures HTTP status codes and latencies. It does not inspect response bodies to assert text matches or JSON paths.
+*   **Complex Logic Controllers (e.g., If, While, Loop, ForEach)**: Vegeta fires predefined targets continuously. It cannot conditionally branch or loop dynamically based on the outcome of a previous request within a single worker's flow.
+*   **JVM-Dependent Elements (e.g., JSR223, BeanShell, JDBC)**: `vjm` is a native Go application and does not embed a Java Virtual Machine. Elements requiring Java script execution or JDBC drivers are not supported.
 
-*(For sequential state scenarios, `vjm` switches to its own StatefulAttacker mode for scenarios with Extractors. Otherwise, it relies on **Multi-Sampler Support (Weights)** to distribute traffic proportionally across multiple independent APIs.)*
+*(Note: Essential stateful features like Extractors, HTTP Cookie Manager, Timers, and Assertions **ARE** fully supported via `vjm`'s internal engine enhancements.)*
 
 ---
 
@@ -106,18 +104,18 @@ chmod +x vjm
 git clone https://github.com/xvlet/vjm.git
 cd vjm
 
-# Build for Linux (amd64)
-make linux
+# Build for specific platform (e.g., Linux amd64)
+make linux_amd64
 
-# Cross-compile for AIX (ppc64)
-make aix
+# Other available targets:
+# linux_arm64, darwin_amd64, darwin_arm64, windows_amd64, windows_arm64, aix_ppc64
 
-# Build all (Linux + AIX)
+# Build all supported platforms
 make all
 
 # Check build outputs
 ls build/
-# vjm_linux   vjm_aix
+# vjm_linux_amd64.tar.gz   vjm_windows_amd64.zip   ...
 ```
 
 ### Manual Build
