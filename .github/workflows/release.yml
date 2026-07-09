@@ -29,5 +29,10 @@ jobs:
         with:
           files: |
             build/vjm_linux_amd64.tar.gz
+            build/vjm_linux_arm64.tar.gz
+            build/vjm_darwin_amd64.tar.gz
+            build/vjm_darwin_arm64.tar.gz
+            build/vjm_windows_amd64.zip
+            build/vjm_windows_arm64.zip
             build/vjm_aix_ppc64.tar.gz
           generate_release_notes: true
