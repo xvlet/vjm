@@ -76,6 +76,29 @@ flowchart LR
 
 ---
 
+## 설치
+
+사용자의 환경에 맞춰 아래 두 가지 방법 중 하나로 설치할 수 있습니다. `vjm` 바이너리는 의존성 문제 없이 독립적으로 실행될 수 있도록 정적 링킹(Statically Linked, `CGO_ENABLED=0`) 방식으로 배포됩니다.
+
+### 1. Go 환경이 설치된 경우 (go install)
+Go(1.25 이상)가 설치된 환경에서는 아래 명령어로 쉽게 설치할 수 있습니다.
+```bash
+go install github.com/xvlet/vjm/cmd/vjm@latest
+```
+
+### 2. 사전 빌드된 바이너리 다운로드 (Pre-built Binary)
+아무것도 설치되지 않은 환경에서 바로 바이너리만 사용하고 싶다면, 최신 릴리즈를 다운로드하세요.
+- [Release 페이지에서 바이너리 다운로드](https://github.com/xvlet/vjm/releases)
+
+다운로드 후 압축을 해제하고 실행 권한을 부여하여 바로 사용할 수 있습니다.
+```bash
+tar -xzf vjm_linux_amd64.tar.gz
+chmod +x vjm
+./vjm -h
+```
+
+---
+
 ## 빌드
 
 ```bash

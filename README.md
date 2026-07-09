@@ -77,6 +77,29 @@ Because `vjm` translates JMeter's **Thread-based, sequential state** model into 
 
 ---
 
+## Installation
+
+You can install `vjm` using one of the following methods. The `vjm` binary is distributed as a statically linked executable (`CGO_ENABLED=0`), ensuring it runs independently without any external dependency issues.
+
+### 1. Using Go (go install)
+If you have Go (1.25+) installed, you can easily install `vjm` via `go install`:
+```bash
+go install github.com/xvlet/vjm/cmd/vjm@latest
+```
+
+### 2. Download Pre-built Binary
+If you don't have Go installed and just want to use the executable, download the latest pre-built release.
+- [Download binary from Releases](https://github.com/xvlet/vjm/releases)
+
+After downloading, extract the archive and run it:
+```bash
+tar -xzf vjm_linux_amd64.tar.gz
+chmod +x vjm
+./vjm -h
+```
+
+---
+
 ## Build
 
 ```bash

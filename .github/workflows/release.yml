@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger workflow on tags starting with v (e.g., v1.0.0, v2.1.3)
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required for creating a release and uploading assets
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25' # Ensure this matches your project's Go version
+          cache: true
+
+      - name: Build binaries via Makefile
+        run: make all
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/vjm_linux_amd64.tar.gz
+            build/vjm_aix_ppc64.tar.gz
+          generate_release_notes: true
