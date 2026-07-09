@@ -16,4 +16,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Attempting to delete release for tag: ${{ github.event.ref }}"
-          gh release delete "${{ github.event.ref }}" --cleanup-tag --yes || echo "Release for ${{ github.event.ref }} not found or already deleted."
+          gh release delete "${{ github.event.ref }}" --yes
