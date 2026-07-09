@@ -49,7 +49,7 @@ func (r *ConcurrencyRunner) Run(ctx context.Context, plan *domain.TestPlan, conf
 		schedule := fmt.Sprintf("rate(0/s) random_arrivals(%ds) rate(%d/s) random_arrivals(%ds) rate(%d/s)", rampUpSec, targetLevel, holdSec, targetLevel)
 		log.Printf("[VegetaRunner] Concurrency: Translating linear ramp to OpenModelSchedule: %s", schedule)
 		plan.ThreadGroups[0].OpenModelSchedule = schedule
-		
+
 		pacer, err := engine.ParseOpenModelSchedule(schedule)
 		if err != nil {
 			return fmt.Errorf("failed to parse open model schedule: %w", err)
@@ -73,7 +73,7 @@ func (r *ConcurrencyRunner) Run(ctx context.Context, plan *domain.TestPlan, conf
 
 		durationStr := fmt.Sprintf("%ds", stepDurSec)
 		log.Printf("[VegetaRunner] --- Concurrency: Running step %d at %d TPS for %s ---", stepIndex, currentRate, durationStr)
-		
+
 		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
 		binPaths = append(binPaths, stepBinPath)
 		config.ResultBinPath = stepBinPath

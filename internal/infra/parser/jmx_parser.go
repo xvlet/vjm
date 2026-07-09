@@ -61,6 +61,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJSONExtractor *domain.JSONExtractor
 	var currentRegexExtractor *domain.RegexExtractor
 
+	var inResponseAssertion, inJSONAssertion bool
+	var currentResponseAssertion *domain.ResponseAssertion
+	var currentJSONAssertion *domain.JSONAssertion
+
 	var inUltimateData bool
 	var inUltimateRow bool
 	var ultimateRowVals []string
@@ -210,6 +214,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if currentTag == "RegexExtractor" {
 				inRegexExtractor = true
 				currentRegexExtractor = &domain.RegexExtractor{}
+			} else if currentTag == "ResponseAssertion" {
+				inResponseAssertion = true
+				currentResponseAssertion = &domain.ResponseAssertion{
+					Name: testNameAttr,
+				}
+			} else if currentTag == "JSONPathAssertion" {
+				inJSONAssertion = true
+				currentJSONAssertion = &domain.JSONAssertion{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -376,10 +390,35 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							currentRegexExtractor.Regex,
 							currentRegexExtractor.Template,
 							currentRegexExtractor.DefaultValueStr,
+							currentRegexExtractor.MatchNo,
 						))
 					}
 				}
 				currentRegexExtractor = nil
+			} else if se.Name.Local == "ResponseAssertion" {
+				inResponseAssertion = false
+				if currentResponseAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentResponseAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentResponseAssertion)
+					}
+				}
+				currentResponseAssertion = nil
+			} else if se.Name.Local == "JSONPathAssertion" {
+				inJSONAssertion = false
+				if currentJSONAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentJSONAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentJSONAssertion)
+					}
+				}
+				currentJSONAssertion = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -513,8 +552,23 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				if currentCookieManager != nil {
-					if nameAttr == "CookieManager.clearEachIteration" {
+					switch nameAttr {
+					case "CookieManager.clearEachIteration":
 						currentCookieManager.ClearEachIteration = (val == "true")
+					case "CookieManager.controlledByThread":
+						currentCookieManager.ControlledByThread = (val == "true")
+					}
+				}
+				if currentJSONAssertion != nil {
+					switch nameAttr {
+					case "JSONVALIDATION":
+						currentJSONAssertion.JSONValidation = (val == "true")
+					case "EXPECT_NULL":
+						currentJSONAssertion.ExpectNull = (val == "true")
+					case "INVERT":
+						currentJSONAssertion.Invert = (val == "true")
+					case "ISREGEX":
+						currentJSONAssertion.IsRegex = (val == "true")
 					}
 				}
 				if currentCookie != nil && nameAttr == "Cookie.secure" {
@@ -559,6 +613,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentTimer.GroupSize = val
 					}
 				}
+				if currentResponseAssertion != nil && nameAttr == "Assertion.test_type" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentResponseAssertion.TestType = v
+					}
+				}
 			case "longProp":
 				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
 					if nameAttr == "timeoutInMs" {
@@ -600,6 +659,22 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "timeoutInMs":
 					if currentTimer != nil && currentTimer.Type == "SyncTimer" {
 						currentTimer.TimeoutInMs = val
+					}
+				case "Assertion.custom_message":
+					if currentResponseAssertion != nil {
+						currentResponseAssertion.CustomFailure = val
+					}
+				case "Assertion.test_field":
+					if currentResponseAssertion != nil {
+						currentResponseAssertion.TestField = val
+					}
+				case "JSON_PATH":
+					if currentJSONAssertion != nil {
+						currentJSONAssertion.JSONPath = val
+					}
+				case "EXPECTED_VALUE":
+					if currentJSONAssertion != nil {
+						currentJSONAssertion.ExpectedValue = val
 					}
 				case "throughput":
 					if currentThroughputTimer != nil {
@@ -707,6 +782,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inJSONExtractor && currentJSONExtractor != nil {
 						currentJSONExtractor.DefaultValueStr = val
 					}
+				case "JSONPostProcessor.match_numbers":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						if num, err := strconv.Atoi(val); err == nil {
+							currentJSONExtractor.MatchNo = num
+						}
+					}
 				case "RegexExtractor.refname":
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.ReferenceName = val
@@ -723,6 +804,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.DefaultValueStr = val
 					}
+				case "RegexExtractor.match_number":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						if num, err := strconv.Atoi(val); err == nil {
+							currentRegexExtractor.MatchNo = num
+						}
+					}
+					// Removed misplaced default block
 				case "filename":
 					if currentCSVDataSet != nil {
 						currentCSVDataSet.Filename = val
@@ -828,6 +916,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentBackendListener.Classname = val
 					}
 				default:
+					if inResponseAssertion && currentResponseAssertion != nil {
+						if !strings.HasPrefix(nameAttr, "Assertion.") {
+							currentResponseAssertion.TestStrings = append(currentResponseAssertion.TestStrings, val)
+						}
+					}
+					_ = inJSONAssertion
+
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
 					}
@@ -840,7 +935,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							userParamValues = append(userParamValues, val)
 						}
 					}
-			}
+				}
 			}
 		}
 	}

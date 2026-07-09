@@ -22,7 +22,7 @@ func LoadProperties(filePath string) (map[string]string, error) {
 		if len(line) == 0 || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
 			continue
 		}
-		
+
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])

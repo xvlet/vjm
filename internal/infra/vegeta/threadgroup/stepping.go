@@ -27,7 +27,7 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 
 	maxRate, _ := strconv.Atoi(eval.Evaluate(stepCfg.MaxRate))
 	stepRate, _ := strconv.Atoi(eval.Evaluate(stepCfg.StepRate))
-	
+
 	initDelaySec, _ := strconv.Atoi(eval.Evaluate(stepCfg.InitialDelay))
 	stepDurSec, _ := strconv.Atoi(eval.Evaluate(stepCfg.StepDuration))
 	holdDurSec, _ := strconv.Atoi(eval.Evaluate(stepCfg.HoldDuration))
@@ -60,7 +60,7 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 
 		durationStr := fmt.Sprintf("%ds", stepDurSec)
 		log.Printf("[VegetaRunner] --- Stepping: Running at %d TPS for %s ---", currentRate, durationStr)
-		
+
 		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
 		binPaths = append(binPaths, stepBinPath)
 		config.ResultBinPath = stepBinPath

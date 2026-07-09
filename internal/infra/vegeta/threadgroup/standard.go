@@ -36,12 +36,17 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 			val := eval.Evaluate(tt.Throughput)
 			throughputPerMin, _ := strconv.ParseFloat(val, 64)
 			if throughputPerMin > 0 {
-				freq := int(throughputPerMin / 60.0)
-				if freq == 0 {
-					freq = 1 // Minimum 1 RPS if defined
+				freq := throughputPerMin / 60.0
+				if freq <= 0 {
+					freq = 1.0 // Minimum 1 RPS if defined
 				}
-				pacer = vegeta.ConstantPacer{Freq: freq, Per: time.Second}
-				// TODO: Add PoissonPacer for PreciseThroughputTimer
+
+				if tt.Type == "PreciseThroughputTimer" {
+					// PoissonPacer models randomized arrivals with a mean rate
+					pacer = PoissonPacer{Freq: freq, Per: time.Second}
+				} else {
+					pacer = vegeta.ConstantPacer{Freq: int(freq), Per: time.Second}
+				}
 			}
 		}
 	}

@@ -476,8 +476,8 @@ Error Set:
 - [ ] **BeanShell PostProcessor**
 
 ### Assertions (검증)
-- [ ] **Response Assertion**
-- [ ] **JSON Assertion**
+- [x] **Response Assertion**
+- [x] **JSON Assertion**
 - [ ] **Size Assertion**
 - [ ] **JSR223 Assertion**
 - [ ] **XPath Assertion**

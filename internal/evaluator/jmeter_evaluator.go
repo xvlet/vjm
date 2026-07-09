@@ -24,8 +24,7 @@ import (
 
 // SharedContext holds thread-safe global states
 type SharedContext struct {
-	mu          sync.RWMutex
-	properties  map[string]string
+	properties  sync.Map
 	globalCount int64
 	csvCache    sync.Map // maps fileName to *CSVSharedState
 }
@@ -35,23 +34,29 @@ type CSVSharedState struct {
 	nextRow int64
 }
 
+type dummyMutex struct{}
+
+func (dummyMutex) Lock()    {}
+func (dummyMutex) Unlock()  {}
+func (dummyMutex) RLock()   {}
+func (dummyMutex) RUnlock() {}
+
 // DefaultEvaluator processes JMeter variables and functions
 type DefaultEvaluator struct {
 	shared     *SharedContext
-	mu         sync.RWMutex
+	mu         dummyMutex // e.mu overhead eliminated via inlining
 	variables  map[string]string
 	localCount int64
 	csvRows    map[string]int // maps fileName to current row index for this thread
 }
 
 func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
-	if props == nil {
-		props = make(map[string]string)
+	shared := &SharedContext{}
+	for k, v := range props {
+		shared.properties.Store(k, v)
 	}
 	return &DefaultEvaluator{
-		shared: &SharedContext{
-			properties: props,
-		},
+		shared:    shared,
 		variables: make(map[string]string),
 		csvRows:   make(map[string]int),
 	}
@@ -74,10 +79,8 @@ func (e *DefaultEvaluator) Clone() Evaluator {
 
 // AddProperties merges additional properties into the evaluator
 func (e *DefaultEvaluator) AddProperties(props map[string]string) {
-	e.shared.mu.Lock()
-	defer e.shared.mu.Unlock()
 	for k, v := range props {
-		e.shared.properties[k] = v
+		e.shared.properties.Store(k, v)
 	}
 }
 
@@ -92,18 +95,29 @@ func (e *DefaultEvaluator) AddVariables(vars map[string]string) {
 
 // SetVariable sets a single variable for the current session
 func (e *DefaultEvaluator) SetVariable(key, value string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	// e.variables is session-local; no lock needed for SetVariable after Clone
 	e.variables[key] = value
 }
 
 // Evaluate performs recursive evaluation of JMeter variables and functions
 func (e *DefaultEvaluator) Evaluate(template string) string {
+	// [PERF] Fast path: if no variable exists, return immediately to avoid allocations
+	if !strings.Contains(template, "${") {
+		return template
+	}
+
 	// Limit recursion to 10 depths to prevent infinite loops
 	for pass := 0; pass < 10; pass++ {
 		previous := template
-		
+
+		if !strings.Contains(template, "${") {
+			break
+		}
+
 		var sb strings.Builder
+		// Pre-allocate to reduce slice growth overhead
+		sb.Grow(len(template) + 64)
+
 		rest := template
 		for {
 			start := strings.Index(rest, "${")
@@ -111,7 +125,7 @@ func (e *DefaultEvaluator) Evaluate(template string) string {
 				sb.WriteString(rest)
 				break
 			}
-			
+
 			// Find the matching '}' considering nested '{' and '}'
 			depth := 1
 			end := -1
@@ -126,21 +140,21 @@ func (e *DefaultEvaluator) Evaluate(template string) string {
 					}
 				}
 			}
-			
+
 			if end == -1 {
 				sb.WriteString(rest)
 				break
 			}
-			
+
 			inner := rest[start+2 : end]
 			replacement := e.evaluateInner(inner)
-			
+
 			sb.WriteString(rest[:start])
 			sb.WriteString(replacement)
-			
+
 			rest = rest[end+1:]
 		}
-		
+
 		template = sb.String()
 		if template == previous {
 			break
@@ -158,27 +172,20 @@ func (e *DefaultEvaluator) evaluateInner(inner string) string {
 	// It's a Variable
 	vName := inner
 	if strings.HasPrefix(vName, "A_") {
-		e.mu.RLock()
 		countStr := e.variables["__counter"]
-		e.mu.RUnlock()
 		if countStr != "" {
 			vName = "A_" + countStr
 		}
 	}
 
-	e.mu.RLock()
 	val, exists := e.variables[vName]
-	e.mu.RUnlock()
 	if exists {
 		return val
 	}
-	
+
 	// Fallback to property if variable not found
-	e.shared.mu.RLock()
-	val, ok := e.shared.properties[inner]
-	e.shared.mu.RUnlock()
-	if ok {
-		return val
+	if propVal, ok := e.shared.properties.Load(inner); ok {
+		return propVal.(string)
 	}
 
 	// Unresolved, return original
@@ -193,7 +200,7 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 
 	funcName := funcStr[:idx]
 	argsStr := strings.TrimSuffix(funcStr[idx+1:], ")")
-	
+
 	args := splitArgs(argsStr)
 
 	switch funcName {
@@ -223,11 +230,8 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 			return ""
 		}
 		propName := args[0]
-		e.shared.mu.RLock()
-		val, ok := e.shared.properties[propName]
-		e.shared.mu.RUnlock()
-		if ok {
-			return val
+		if propVal, ok := e.shared.properties.Load(propName); ok {
+			return propVal.(string)
 		}
 		if len(args) > 1 {
 			return args[1] // Default value
@@ -236,8 +240,7 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 
 	case "__eval":
 		if len(args) > 0 {
-			// The content inside __eval is usually already parsed by the recursive regex
-			return args[0]
+			return e.Evaluate(args[0])
 		}
 		return ""
 
@@ -265,16 +268,14 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 		if len(args) > 2 {
 			defVal = args[2]
 		}
-		e.shared.mu.RLock()
-		val, ok := e.shared.properties[propName]
-		e.shared.mu.RUnlock()
-		if !ok {
-			val = defVal
+
+		val := defVal
+		if propVal, ok := e.shared.properties.Load(propName); ok {
+			val = propVal.(string)
 		}
+
 		if varName != "" {
-			e.mu.Lock()
 			e.variables[varName] = val
-			e.mu.Unlock()
 		}
 		return val
 
@@ -287,9 +288,7 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 		if len(args) > 1 {
 			defVal = args[1]
 		}
-		e.mu.RLock()
 		val, ok := e.variables[varName]
-		e.mu.RUnlock()
 		if ok {
 			return val
 		}
@@ -580,9 +579,7 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 		if len(args) == 0 {
 			return "false"
 		}
-		e.shared.mu.RLock()
-		_, ok := e.shared.properties[args[0]]
-		e.shared.mu.RUnlock()
+		_, ok := e.shared.properties.Load(args[0])
 		return strconv.FormatBool(ok)
 
 	case "__setProperty":
@@ -591,9 +588,7 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 		}
 		propName := args[0]
 		propVal := args[1]
-		e.shared.mu.Lock()
-		e.shared.properties[propName] = propVal
-		e.shared.mu.Unlock()
+		e.shared.properties.Store(propName, propVal)
 		if len(args) > 2 && strings.ToLower(args[2]) == "true" {
 			return propVal
 		}
@@ -656,7 +651,6 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 			return ""
 		}
 
-		e.mu.RLock()
 		rowIdx, ok := e.csvRows[fileName]
 		e.mu.RUnlock()
 		if !ok {

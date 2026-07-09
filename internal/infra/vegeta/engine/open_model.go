@@ -2,6 +2,8 @@ package engine
 
 import (
 	"fmt"
+	"math"
+	"math/rand/v2"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +16,7 @@ type OpenModelPhase struct {
 	StartRate float64 // req/s
 	EndRate   float64 // req/s
 	Duration  time.Duration
+	IsRandom  bool // if true, arrival times follow a Poisson distribution (random)
 }
 
 type OpenModelPacer struct {
@@ -104,7 +107,8 @@ func ParseOpenModelSchedule(schedule string) (*OpenModelPacer, error) {
 				end = r
 			}
 
-			phases = append(phases, OpenModelPhase{StartRate: start, EndRate: end, Duration: d})
+			isRandom := (cmd == "random_arrivals")
+			phases = append(phases, OpenModelPhase{StartRate: start, EndRate: end, Duration: d, IsRandom: isRandom})
 			if cmd == "pause" {
 				currentRate = &start // 0
 			}
@@ -167,10 +171,12 @@ func (p *OpenModelPacer) Pace(elapsed time.Duration, hits uint64) (time.Duration
 
 	currentRate := 0.0
 	accumulatedTime := time.Duration(0)
-	for _, phase := range p.phases {
+	var activePhase *OpenModelPhase
+	for i, phase := range p.phases {
 		if elapsed >= accumulatedTime && elapsed < accumulatedTime+phase.Duration {
 			ratio := float64(elapsed-accumulatedTime) / float64(phase.Duration)
 			currentRate = phase.StartRate + ratio*(phase.EndRate-phase.StartRate)
+			activePhase = &p.phases[i]
 			break
 		}
 		accumulatedTime += phase.Duration
@@ -180,8 +186,14 @@ func (p *OpenModelPacer) Pace(elapsed time.Duration, hits uint64) (time.Duration
 		return 100 * time.Millisecond, false
 	}
 
-	// Next hit should be roughly in 1/currentRate seconds
-	return time.Duration(float64(time.Second) / currentRate), false
+	interval := float64(time.Second) / currentRate
+	if activePhase != nil && activePhase.IsRandom {
+		// Apply exponential distribution jitter for random arrivals
+		u := 1.0 - rand.Float64()
+		interval = -math.Log(u) * interval
+	}
+
+	return time.Duration(interval), false
 }
 
 // Rate returns the instantaneous rate at the given elapsed time

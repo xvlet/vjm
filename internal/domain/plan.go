@@ -2,11 +2,11 @@ package domain
 
 // SteppingConfig represents the properties of a SteppingThreadGroup.
 type SteppingConfig struct {
-	InitialDelay  string
-	StepRate      string
-	StepDuration  string
-	MaxRate       string
-	HoldDuration  string
+	InitialDelay string
+	StepRate     string
+	StepDuration string
+	MaxRate      string
+	HoldDuration string
 }
 
 // ThroughputTimer represents a JMeter Throughput Timer (Constant or Precise)
@@ -20,7 +20,7 @@ type Timer struct {
 	Type  string // "ConstantTimer", "UniformRandomTimer", "GaussianRandomTimer", "PoissonRandomTimer", "SyncTimer"
 	Delay string
 	Range string
-	
+
 	// SyncTimer specific
 	GroupSize   string
 	TimeoutInMs string
@@ -53,7 +53,6 @@ type BackendListener struct {
 	Arguments map[string]string
 }
 
-
 // Cookie represents a user-defined cookie in the CookieManager.
 type Cookie struct {
 	Name   string
@@ -66,6 +65,7 @@ type Cookie struct {
 // CookieManager represents the HTTP Cookie Manager config element.
 type CookieManager struct {
 	ClearEachIteration bool
+	ControlledByThread bool
 	Cookies            []Cookie
 }
 
@@ -163,32 +163,34 @@ type UltimateConfig struct {
 // These will be leveraged in a future enhancement to support stepped load (e.g. SteppingThreadGroup)
 // by running Vegeta in multiple stages and merging the results.
 type ThreadGroup struct {
-	Name           string
-	NumThreads     int // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
-	RampUp         int // TODO: seconds to ramp up to full load
-	Duration       int // TODO: total duration per step
-	Samplers       []*Sampler
-	SteppingConfig *SteppingConfig
+	Name              string
+	NumThreads        int // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
+	RampUp            int // TODO: seconds to ramp up to full load
+	Duration          int // TODO: total duration per step
+	Samplers          []*Sampler
+	SteppingConfig    *SteppingConfig
 	ConcurrencyConfig *ConcurrencyConfig
-	UltimateConfig *UltimateConfig
+	UltimateConfig    *UltimateConfig
 	OpenModelSchedule string // JMeter 5.5+ Open Model Thread Group DSL schedule
-	Timers         []*Timer
-	CSVDataSets     []*CSVDataSet
-	ResultCollectors []*ResultCollector
-	BackendListeners []*BackendListener
-	CookieManager   *CookieManager
-	CacheManager    *CacheManager
-	DNSCacheManager *DNSCacheManager
-	AuthManager     *AuthManager
-	Counters        []*Counter
-	RandomVariables []*RandomVariable
-	ThroughputTimers []*ThroughputTimer
+	Timers            []*Timer
+	CSVDataSets       []*CSVDataSet
+	ResultCollectors  []*ResultCollector
+	BackendListeners  []*BackendListener
+	CookieManager     *CookieManager
+	CacheManager      *CacheManager
+	DNSCacheManager   *DNSCacheManager
+	AuthManager       *AuthManager
+	Counters          []*Counter
+	RandomVariables   []*RandomVariable
+	ThroughputTimers  []*ThroughputTimer
+	Assertions        []Assertion
 }
 
 // Sampler represents a JMeter HTTP Sampler
 type Sampler struct {
-	Name      string
-	Request   *RequestTemplate
-	Weight    float64
+	Name       string
+	Request    *RequestTemplate
+	Weight     float64
 	Extractors []Extractor
+	Assertions []Assertion
 }

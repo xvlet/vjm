@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,9 +90,10 @@ func (b *SyncBarrier) Wait() {
 }
 
 type CSVRuntime struct {
-	Config *domain.CSVDataSet
-	Lines  [][]string
-	Next   *int64
+	Config   *domain.CSVDataSet
+	Lines    [][]string
+	Next     *int64
+	VarNames []string // pre-parsed variable names (hot path 최적화)
 }
 
 func parseCSV(cfg *domain.CSVDataSet) *CSVRuntime {
@@ -116,10 +119,15 @@ func parseCSV(cfg *domain.CSVDataSet) *CSVRuntime {
 		lines = append(lines, strings.Split(line, delim))
 	}
 	var next int64 = 0
+	var varNames []string
+	for _, vn := range strings.Split(cfg.VariableNames, ",") {
+		varNames = append(varNames, strings.TrimSpace(vn))
+	}
 	return &CSVRuntime{
-		Config: cfg,
-		Lines:  lines,
-		Next:   &next,
+		Config:   cfg,
+		Lines:    lines,
+		Next:     &next,
+		VarNames: varNames,
 	}
 }
 
@@ -134,6 +142,13 @@ type CounterRuntime struct {
 	Start   int64
 	End     int64
 	Incr    int64
+}
+
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 32*1024)
+		return &b
+	},
 }
 
 // Session represents a virtual user executing a Thread Group sequentially
@@ -152,7 +167,7 @@ func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluato
 	return &Session{
 		ID:        id,
 		Variables: make(map[string]string),
-		Evaluator: globalEval, // TODO: Make evaluator session-aware
+		Evaluator: globalEval,
 		Tg:        tg,
 		Step:      0,
 		Cache:     make(map[string]*CacheEntry),
@@ -169,10 +184,18 @@ type StatefulAttacker struct {
 
 func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration) *StatefulAttacker {
 	transport := &http.Transport{
-		MaxIdleConns:        10000,
-		MaxIdleConnsPerHost: 10000,
-		MaxConnsPerHost:     10000,
-		IdleConnTimeout:     30 * time.Second,
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10000,
+		MaxIdleConnsPerHost:   10000,
+		MaxConnsPerHost:       10000,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 	return &StatefulAttacker{
 		transport: transport,
@@ -356,8 +379,33 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 		}
 
 		attackStart := time.Now()
-		var hits uint64
-		var hitsMutex sync.Mutex
+
+		tokens := make(chan struct{}, int(a.maxW)*2) // 버퍼 추가: 생산자 goroutine 블로킹 방지
+		go func() {
+			var hits uint64
+			for {
+				if ctx.Err() != nil {
+					close(tokens)
+					return
+				}
+				elapsed := time.Since(attackStart)
+				wait, stop := a.pacer.Pace(elapsed, hits)
+				if stop {
+					close(tokens)
+					return
+				}
+				if wait > 0 {
+					time.Sleep(wait)
+				}
+				select {
+				case tokens <- struct{}{}:
+					hits++
+				case <-ctx.Done():
+					close(tokens)
+					return
+				}
+			}
+		}()
 
 		for i := uint64(0); i < a.maxW; i++ {
 			wg.Add(1)
@@ -367,7 +415,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				if len(plan.ThreadGroups) == 0 {
 					return
 				}
-				tg := plan.ThreadGroups[0]
+				tgIdx := int(sessionID) % len(plan.ThreadGroups)
+				tg := plan.ThreadGroups[tgIdx]
 				session := NewSession(sessionID, tg, globalEval.Clone())
 
 				var localRandomVariables []*RandomVariableRuntime
@@ -376,11 +425,9 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						localRandomVariables = append(localRandomVariables, parseRandomVariable(rv))
 					}
 				}
-				if len(plan.ThreadGroups) > 0 {
-					for _, rv := range plan.ThreadGroups[0].RandomVariables {
-						if rv.PerThread {
-							localRandomVariables = append(localRandomVariables, parseRandomVariable(rv))
-						}
+				for _, rv := range tg.RandomVariables {
+					if rv.PerThread {
+						localRandomVariables = append(localRandomVariables, parseRandomVariable(rv))
 					}
 				}
 
@@ -389,9 +436,10 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					if scsv.Config.ShareMode == "shareMode.thread" {
 						var next int64 = 0
 						localCSVs = append(localCSVs, &CSVRuntime{
-							Config: scsv.Config,
-							Lines:  scsv.Lines,
-							Next:   &next,
+							Config:   scsv.Config,
+							Lines:    scsv.Lines,
+							Next:     &next,
+							VarNames: scsv.VarNames,
 						})
 					} else {
 						localCSVs = append(localCSVs, scsv)
@@ -474,6 +522,11 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					Jar:       createCookieJar(),
 				}
 
+				// [PERF] allRVs를 루프 밖에서 1회만 계산 (매 이터레이션 heap 할당 제거)
+				allRVs := make([]*RandomVariableRuntime, 0, len(sharedRandomVariables)+len(localRandomVariables))
+				allRVs = append(allRVs, sharedRandomVariables...)
+				allRVs = append(allRVs, localRandomVariables...)
+
 				for {
 					if ctx.Err() != nil {
 						return
@@ -486,7 +539,6 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						session.Cache = make(map[string]*CacheEntry)
 					}
 
-					allRVs := append(sharedRandomVariables, localRandomVariables...)
 					for _, rv := range allRVs {
 						var val int64
 						if rv.Config.PerThread {
@@ -517,9 +569,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							continue
 						}
 						row := csv.Lines[int(idx)%len(csv.Lines)]
-						vars := strings.Split(csv.Config.VariableNames, ",")
-						for i, vName := range vars {
-							vName = strings.TrimSpace(vName)
+						// [PERF] VarNames는 parseCSV 시 1회만 파싱됨 (매 이터레이션 strings.Split 제거)
+						for i, vName := range csv.VarNames {
 							if vName != "" && i < len(row) {
 								session.Variables[vName] = row[i]
 								session.Evaluator.SetVariable(vName, row[i])
@@ -556,22 +607,19 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						session.Variables[c.Config.Name] = valStr
 						session.Evaluator.SetVariable(c.Config.Name, valStr)
 					}
-					
+
 					elapsed := time.Since(attackStart)
 					if a.dur > 0 && elapsed >= a.dur {
 						return
 					}
 
-					hitsMutex.Lock()
-					wait, stop := a.pacer.Pace(elapsed, hits)
-					hits++
-					hitsMutex.Unlock()
-
-					if stop {
+					select {
+					case _, ok := <-tokens:
+						if !ok {
+							return
+						}
+					case <-ctx.Done():
 						return
-					}
-					if wait > 0 {
-						time.Sleep(wait)
 					}
 
 					// Execute samplers sequentially
@@ -585,18 +633,18 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						for _, timer := range tg.Timers {
 							delayStr := session.Evaluator.Evaluate(timer.Delay)
 							rangeStr := session.Evaluator.Evaluate(timer.Range)
-							
+
 							delayMs, _ := strconv.ParseFloat(delayStr, 64)
 							rangeMs, _ := strconv.ParseFloat(rangeStr, 64)
-							
+
 							var sleepMs float64
 							switch timer.Type {
 							case "ConstantTimer":
 								sleepMs = delayMs
 							case "UniformRandomTimer":
-								sleepMs = delayMs + rand.Float64() * rangeMs
+								sleepMs = delayMs + rand.Float64()*rangeMs
 							case "GaussianRandomTimer":
-								sleepMs = delayMs + math.Abs(rand.NormFloat64()) * rangeMs
+								sleepMs = delayMs + math.Abs(rand.NormFloat64())*rangeMs
 							case "PoissonRandomTimer":
 								sleepMs = delayMs + poissonDelay(rangeMs)
 							case "SyncTimer":
@@ -612,107 +660,146 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							time.Sleep(totalDelay)
 						}
 
-					// Evaluate variables in URL
-					url := session.Evaluator.Evaluate(sampler.Request.URL)
-					method := sampler.Request.Method
-					bodyStr := session.Evaluator.Evaluate(sampler.Request.BodyTemplate)
+						// Evaluate variables in URL
+						url := session.Evaluator.Evaluate(sampler.Request.URL)
+						method := sampler.Request.Method
+						bodyStr := session.Evaluator.Evaluate(sampler.Request.BodyTemplate)
 
-					req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(bodyStr))
-					if err != nil {
-						continue
-					}
-
-					// Evaluate headers
-					for k, v := range sampler.Request.Headers {
-						req.Header.Set(k, session.Evaluator.Evaluate(v))
-					}
-
-					if cacheManager != nil {
-						if entry, ok := session.Cache[url]; ok {
-							if entry.ETag != "" {
-								req.Header.Set("If-None-Match", entry.ETag)
-							}
-							if entry.LastModified != "" {
-								req.Header.Set("If-Modified-Since", entry.LastModified)
-							}
+						var bodyReader io.Reader
+						if bodyStr != "" {
+							bodyReader = strings.NewReader(bodyStr)
 						}
-					}
+						req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+						if err != nil {
+							continue
+						}
 
-					if authManager != nil {
-						for _, auth := range authManager.AuthList {
-							authUrl := session.Evaluator.Evaluate(auth.URL)
-							if strings.HasPrefix(url, authUrl) {
-								user := session.Evaluator.Evaluate(auth.Username)
-								pass := session.Evaluator.Evaluate(auth.Password)
-								mech := session.Evaluator.Evaluate(auth.Mechanism)
-								if mech == "" || mech == "BASIC_DIGEST" || mech == "BASIC" {
-									authStr := user + ":" + pass
-									b64 := base64.StdEncoding.EncodeToString([]byte(authStr))
-									req.Header.Set("Authorization", "Basic "+b64)
+						// Evaluate headers
+						for k, v := range sampler.Request.Headers {
+							req.Header.Set(k, session.Evaluator.Evaluate(v))
+						}
+
+						if cacheManager != nil {
+							if entry, ok := session.Cache[url]; ok {
+								if entry.ETag != "" {
+									req.Header.Set("If-None-Match", entry.ETag)
 								}
-								break
+								if entry.LastModified != "" {
+									req.Header.Set("If-Modified-Since", entry.LastModified)
+								}
 							}
 						}
-					}
 
-					start := time.Now()
-					resp, err := sessionClient.Do(req)
-					elapsed := time.Since(start)
+						if authManager != nil {
+							for _, auth := range authManager.AuthList {
+								authUrl := session.Evaluator.Evaluate(auth.URL)
+								if strings.HasPrefix(url, authUrl) {
+									user := session.Evaluator.Evaluate(auth.Username)
+									pass := session.Evaluator.Evaluate(auth.Password)
+									mech := session.Evaluator.Evaluate(auth.Mechanism)
+									if mech == "" || mech == "BASIC_DIGEST" || mech == "BASIC" {
+										authStr := user + ":" + pass
+										b64 := base64.StdEncoding.EncodeToString([]byte(authStr))
+										req.Header.Set("Authorization", "Basic "+b64)
+									}
+									break
+								}
+							}
+						}
 
-					res := &vegeta.Result{
-						Attack:    "Stateful",
-						Seq:       uint64(step),
-						Timestamp: start,
-						Latency:   elapsed,
-						Method:    method,
-						URL:       url,
-					}
+						start := time.Now()
+						resp, err := sessionClient.Do(req)
+						elapsed := time.Since(start)
 
-					var bodyBytes []byte
-					if err == nil {
-						res.Code = uint16(resp.StatusCode)
-						bodyBytes, _ = io.ReadAll(resp.Body)
-						_ = resp.Body.Close()
-						res.BytesIn = uint64(len(bodyBytes))
+						res := &vegeta.Result{
+							Attack:    "Stateful",
+							Seq:       uint64(step),
+							Timestamp: start,
+							Latency:   elapsed,
+							Method:    method,
+							URL:       url,
+						}
 
-						if cacheManager != nil && (resp.StatusCode == 200 || resp.StatusCode == 304) {
-							etag := resp.Header.Get("ETag")
-							lastMod := resp.Header.Get("Last-Modified")
-							if etag != "" || lastMod != "" {
-								if len(session.Cache) < cacheManager.MaxSize {
-									session.Cache[url] = &CacheEntry{
-										ETag:         etag,
-										LastModified: lastMod,
+						var bodyBytes []byte
+						if err == nil {
+							res.Code = uint16(resp.StatusCode)
+							needsBody := len(sampler.Extractors) > 0 || len(sampler.Assertions) > 0
+
+							bufPtr := bufferPool.Get().(*[]byte)
+							buf := *bufPtr
+
+							if needsBody {
+								// bytes.Buffer 직접 사용: strings.Builder 경유 시 2번 복사 → 0번으로 최적화
+								var bb bytes.Buffer
+								bb.Grow(4096)
+								written, _ := io.CopyBuffer(&bb, resp.Body, buf)
+								bodyBytes = bb.Bytes()
+								res.BytesIn = uint64(written)
+							} else {
+								written, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
+								res.BytesIn = uint64(written)
+							}
+
+							_ = resp.Body.Close()  // Close 먼저 (읽기 완료 보장)
+							bufferPool.Put(bufPtr) // 그 다음 Pool 반환
+
+							if cacheManager != nil && (resp.StatusCode == 200 || resp.StatusCode == 304) {
+								etag := resp.Header.Get("ETag")
+								lastMod := resp.Header.Get("Last-Modified")
+								if etag != "" || lastMod != "" {
+									if len(session.Cache) < cacheManager.MaxSize {
+										session.Cache[url] = &CacheEntry{
+											ETag:         etag,
+											LastModified: lastMod,
+										}
 									}
 								}
 							}
+
+							// Execute extractors
+							for _, ext := range sampler.Extractors {
+								if ext == nil {
+									continue
+								}
+
+								if multiExt, ok := ext.(domain.MultiExtractor); ok {
+									vals, extractOk := multiExt.ExtractMulti(bodyBytes)
+									if extractOk && len(vals) > 0 {
+										for k, v := range vals {
+											session.Variables[k] = v
+											session.Evaluator.SetVariable(k, v)
+										}
+										continue
+									}
+									// Fallback to default below if not found
+								}
+
+								val, extractOk := ext.Extract(bodyBytes)
+								if !extractOk {
+									val = ext.DefaultValue()
+								}
+								session.Variables[ext.RefName()] = val
+								session.Evaluator.SetVariable(ext.RefName(), val)
+							}
+
+							// Execute assertions
+							for _, ast := range sampler.Assertions {
+								if err := evaluateAssertion(ast, resp, bodyBytes, session); err != nil {
+									res.Error = err.Error()
+									break // fail fast on first assertion error
+								}
+							}
+
+						} else {
+							res.Error = err.Error()
 						}
 
-						// Execute extractors
-						log.Printf("[Stateful] Sampler %d has %d extractors", step, len(sampler.Extractors))
-						for _, ext := range sampler.Extractors {
-							if ext == nil {
-								continue
-							}
-							val, ok := ext.Extract(bodyBytes)
-							if !ok {
-								val = ext.DefaultValue()
-							}
-							log.Printf("[Stateful] Extracted %s = %s", ext.RefName(), val)
-							session.Variables[ext.RefName()] = val
-							session.Evaluator.SetVariable(ext.RefName(), val)
+						select {
+						case results <- res:
+						case <-ctx.Done():
+							return
 						}
-					} else {
-						res.Error = err.Error()
-						log.Printf("[Stateful] Sampler error: %v", err)
 					}
-
-					select {
-					case results <- res:
-					case <-ctx.Done():
-						return
-					}
-				}
 				}
 			}(i)
 		}
@@ -721,4 +808,119 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 	}()
 
 	return results
+}
+
+func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []byte, session *Session) error {
+	switch a := ast.(type) {
+	case *domain.ResponseAssertion:
+		var target string
+		switch a.TestField {
+		case "Assertion.response_code":
+			target = strconv.Itoa(resp.StatusCode)
+		case "Assertion.response_message":
+			target = resp.Status
+		case "Assertion.response_headers":
+			var sb strings.Builder
+			for k, v := range resp.Header {
+				sb.WriteString(k)
+				sb.WriteString(": ")
+				sb.WriteString(strings.Join(v, ", "))
+				sb.WriteString("\n")
+			}
+			target = sb.String()
+		default: // "Assertion.response_data"
+			target = string(bodyBytes)
+		}
+
+		isNot := (a.TestType & 32) != 0
+		isOr := (a.TestType & 64) != 0
+
+		matchCount := 0
+		for _, testStr := range a.TestStrings {
+			evalStr := session.Evaluator.Evaluate(testStr)
+
+			matched := false
+
+			// Extract base test type by masking out Not and Or flags
+			baseType := a.TestType &^ (32 | 64)
+
+			switch baseType {
+			case 1: // Matches (regex exact)
+				matched, _ = regexp.MatchString("^"+evalStr+"$", target)
+			case 2: // Contains (regex contains)
+				matched, _ = regexp.MatchString(evalStr, target)
+			case 8: // Equals (exact match)
+				matched = (target == evalStr)
+			case 16: // Substring (literal contains)
+				matched = strings.Contains(target, evalStr)
+			default:
+				matched = strings.Contains(target, evalStr)
+			}
+
+			if isNot {
+				matched = !matched
+			}
+
+			if matched {
+				matchCount++
+				if isOr {
+					return nil // Fast success for OR
+				}
+			} else {
+				if !isOr {
+					failMsg := a.CustomFailure
+					if failMsg == "" {
+						failMsg = fmt.Sprintf("ResponseAssertion failed: expected '%s' in %s", evalStr, a.TestField)
+					}
+					return fmt.Errorf("%s", session.Evaluator.Evaluate(failMsg))
+				}
+			}
+		}
+
+		if isOr && matchCount == 0 && len(a.TestStrings) > 0 {
+			failMsg := a.CustomFailure
+			if failMsg == "" {
+				failMsg = "ResponseAssertion failed: none of the OR conditions met"
+			}
+			return fmt.Errorf("%s", session.Evaluator.Evaluate(failMsg))
+		}
+
+		return nil
+
+	case *domain.JSONAssertion:
+		actualValue, found := domain.EvaluateJSONPath(bodyBytes, a.JSONPath)
+		if !found {
+			if a.ExpectNull {
+				return nil
+			}
+			return fmt.Errorf("JSONAssertion failed: path '%s' not found", a.JSONPath)
+		}
+
+		if a.ExpectNull {
+			return fmt.Errorf("JSONAssertion failed: expected null but found value for '%s'", a.JSONPath)
+		}
+
+		if a.JSONValidation {
+			expectedVal := session.Evaluator.Evaluate(a.ExpectedValue)
+			matched := false
+			if a.IsRegex {
+				matched, _ = regexp.MatchString(expectedVal, actualValue)
+			} else {
+				matched = (actualValue == expectedVal)
+			}
+
+			if a.Invert {
+				matched = !matched
+			}
+
+			if !matched {
+				if a.Invert {
+					return fmt.Errorf("JSONAssertion failed: value for '%s' matched '%s' but Invert is true", a.JSONPath, expectedVal)
+				}
+				return fmt.Errorf("JSONAssertion failed: expected '%s' for '%s', got '%s'", expectedVal, a.JSONPath, actualValue)
+			}
+		}
+		return nil
+	}
+	return nil
 }

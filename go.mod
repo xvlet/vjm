@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/antchfx/xmlquery v1.5.1
+	github.com/oliveagle/jsonpath v0.1.4
 	github.com/tsenart/vegeta/v12 v12.13.0
 )
 
