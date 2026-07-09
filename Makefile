@@ -29,14 +29,14 @@ compile_linux:
 	@rm -rf $(STAGING_DIR)
 	@mkdir -p $(STAGING_DIR)
 	@echo "Performing Go build for Linux (CGO_ENABLED=0)..."
-	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o $(STAGING_DIR)/$(APP_NAME)_linux $(CMD_PATH)
+	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o $(STAGING_DIR)/$(APP_NAME)_linux $(CMD_PATH) >> build_linux.log 2>&1
 
 compile_aix:
 	@echo "Starting build process in staging directory: $(STAGING_DIR)..."
 	@rm -rf $(STAGING_DIR)
 	@mkdir -p $(STAGING_DIR)
 	@echo "Performing Go build for AIX (CGO_ENABLED=0, GOPPC64=power8)..."
-	@GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o $(STAGING_DIR)/$(APP_NAME)_aix $(CMD_PATH)
+	@GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o $(STAGING_DIR)/$(APP_NAME)_aix $(CMD_PATH) >> build_aix.log 2>&1
 
 clean:
 	rm -rf $(BASE_DIR) $(STAGING_DIR)

@@ -29,21 +29,21 @@ func (m *multiFlag) Set(v string) error {
 
 func main() {
 	jmxPath := flag.String("t", "", "JMeter .jmx file path")
-	
+
 	rate := flag.Int("rate", 1000, "TPS Rate")
 	flag.IntVar(rate, "r", 1000, "TPS Rate (alias for -rate)")
-	
+
 	duration := flag.String("duration", "30s", "Duration (e.g. 30s, 1m)")
 	flag.StringVar(duration, "d", "30s", "Duration (alias for -duration)")
-	
+
 	workers := flag.Int("workers", 0, "Max workers (0 means vegeta default)")
 	flag.IntVar(workers, "w", 0, "Max workers (alias for -workers)")
-	
+
 	resultFile := flag.String("l", "", "Vegeta binary result file (defaults to results/result_YYYYMMDD_HHMMSS.bin)")
-	
+
 	reportDir := flag.String("export", "", "HTML Report output directory")
 	flag.StringVar(reportDir, "e", "", "HTML Report output directory (alias for -export)")
-	
+
 	jmeterHome := flag.String("jmeter-home", os.Getenv("JMETER_HOME"), "JMETER_HOME path")
 
 	var propFiles multiFlag

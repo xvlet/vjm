@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.5">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true"/>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="State Prop Request" enabled="true">
+          <stringProp name="HTTPSampler.domain">localhost</stringProp>
+          <stringProp name="HTTPSampler.port">58080</stringProp>
+          <stringProp name="HTTPSampler.protocol">http</stringProp>
+          <stringProp name="HTTPSampler.path">/test?setProp=${__setProperty(target,127.0.0.1,true)}&amp;prop=${__property(target,,default)}&amp;p=${__P(target,default)}&amp;isPropDef=${__isPropDefined(target)}&amp;isVarDef=${__isVarDefined(MYVAR)}&amp;evalVar=${__evalVar(MYVAR)}&amp;eval=${__eval(${MYVAR})}&amp;V=${__V(MYVAR)}&amp;csv=${__CSVRead(test.csv,0)}&amp;fileStr=${__FileToString(test.txt)}&amp;xpath=${__XPath(test.xml,//node)}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Header Manager" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">X-Test-Var</stringProp>
+                <stringProp name="Header.value">${__V(A_${__counter(FALSE)})}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

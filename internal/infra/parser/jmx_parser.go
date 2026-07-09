@@ -49,13 +49,41 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 
 	var hashTreeDepth int
 	var pendingWeight float64
-	var activeWeight float64 = 1.0
+	var activeWeight = 1.0
 	weightMap := make(map[int]float64)
 
 	var inFloatProperty bool
 	var floatPropName string
 	var floatPropNameState bool
 	var floatPropValueState bool
+
+	var inJSONExtractor, inRegexExtractor bool
+	var currentJSONExtractor *domain.JSONExtractor
+	var currentRegexExtractor *domain.RegexExtractor
+
+	var inResponseAssertion, inJSONAssertion bool
+	var currentResponseAssertion *domain.ResponseAssertion
+	var currentJSONAssertion *domain.JSONAssertion
+
+	var inUltimateData bool
+	var inUltimateRow bool
+	var ultimateRowVals []string
+
+	var currentCSVDataSet *domain.CSVDataSet
+	var currentCookieManager *domain.CookieManager
+	var currentCookie *domain.Cookie
+	var currentCacheManager *domain.CacheManager
+	var currentCounter *domain.Counter
+	var currentDNSCacheManager *domain.DNSCacheManager
+	var currentAuthManager *domain.AuthManager
+	var currentAuthorization *domain.Authorization
+	var currentRandomVariable *domain.RandomVariable
+	var currentResultCollector *domain.ResultCollector
+	var currentBackendListener *domain.BackendListener
+	var currentThroughputTimer *domain.ThroughputTimer
+	var inDNSServers bool
+	var inDNSHosts bool
+	var currentStaticHostName string
 
 	for {
 		t, err := decoder.Token()
@@ -99,8 +127,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentThreadGroup = &domain.ThreadGroup{
 					Name: nameAttr,
 				}
-				if currentTag == "kg.apc.jmeter.threads.SteppingThreadGroup" {
+				switch currentTag {
+				case "kg.apc.jmeter.threads.SteppingThreadGroup":
 					currentThreadGroup.SteppingConfig = &domain.SteppingConfig{}
+				case "com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup":
+					currentThreadGroup.ConcurrencyConfig = &domain.ConcurrencyConfig{}
+				case "kg.apc.jmeter.threads.UltimateThreadGroup":
+					currentThreadGroup.UltimateConfig = &domain.UltimateConfig{}
 				}
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
@@ -129,10 +162,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				userParamValues = []string{}
 			} else if currentTag == "collectionProp" {
 				switch nameAttr {
+				case "DNSCacheManager.servers":
+					inDNSServers = true
+				case "DNSCacheManager.hosts":
+					inDNSHosts = true
 				case "UserParameters.names":
 					userParamState = "names"
 				case "UserParameters.thread_values":
 					userParamState = "values"
+				case "ultimatethreadgroupdata":
+					inUltimateData = true
+				default:
+					if inUltimateData {
+						inUltimateRow = true
+						ultimateRowVals = []string{}
+					}
 				}
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
@@ -141,7 +185,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				floatPropNameState = true
 			} else if currentTag == "value" && inFloatProperty {
 				floatPropValueState = true
-			} else if currentTag == "ConstantTimer" || currentTag == "UniformRandomTimer" {
+			} else if currentTag == "doubleProp" {
+				inFloatProperty = true
+				floatPropName = ""
+			} else if currentTag == "ConstantTimer" || currentTag == "UniformRandomTimer" || currentTag == "GaussianRandomTimer" || currentTag == "PoissonRandomTimer" || currentTag == "SyncTimer" {
 				if enabledAttr != "false" {
 					currentTimer = &domain.Timer{
 						Type: currentTag,
@@ -149,6 +196,152 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if currentThreadGroup != nil {
 						currentThreadGroup.Timers = append(currentThreadGroup.Timers, currentTimer)
 					}
+				}
+			} else if currentTag == "ConstantThroughputTimer" || currentTag == "PreciseThroughputTimer" {
+				if enabledAttr != "false" {
+					currentThroughputTimer = &domain.ThroughputTimer{
+						Type: currentTag,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.ThroughputTimers = append(currentThreadGroup.ThroughputTimers, currentThroughputTimer)
+					} else {
+						plan.ThroughputTimers = append(plan.ThroughputTimers, currentThroughputTimer)
+					}
+				}
+			} else if currentTag == "JSONPostProcessor" {
+				inJSONExtractor = true
+				currentJSONExtractor = &domain.JSONExtractor{}
+			} else if currentTag == "RegexExtractor" {
+				inRegexExtractor = true
+				currentRegexExtractor = &domain.RegexExtractor{}
+			} else if currentTag == "ResponseAssertion" {
+				inResponseAssertion = true
+				currentResponseAssertion = &domain.ResponseAssertion{
+					Name: testNameAttr,
+				}
+			} else if currentTag == "JSONPathAssertion" {
+				inJSONAssertion = true
+				currentJSONAssertion = &domain.JSONAssertion{
+					Name: testNameAttr,
+				}
+			} else if currentTag == "CSVDataSet" {
+				if enabledAttr != "false" {
+					currentCSVDataSet = &domain.CSVDataSet{
+						Delimiter: ",",
+						Recycle:   true,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.CSVDataSets = append(currentThreadGroup.CSVDataSets, currentCSVDataSet)
+					} else {
+						plan.CSVDataSets = append(plan.CSVDataSets, currentCSVDataSet)
+					}
+				}
+			} else if currentTag == "ResultCollector" {
+				if enabledAttr != "false" {
+					currentResultCollector = &domain.ResultCollector{
+						Name: testNameAttr,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.ResultCollectors = append(currentThreadGroup.ResultCollectors, currentResultCollector)
+					} else {
+						plan.ResultCollectors = append(plan.ResultCollectors, currentResultCollector)
+					}
+				}
+			} else if currentTag == "BackendListener" {
+				if enabledAttr != "false" {
+					currentBackendListener = &domain.BackendListener{
+						Name:      testNameAttr,
+						Arguments: make(map[string]string),
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.BackendListeners = append(currentThreadGroup.BackendListeners, currentBackendListener)
+					} else {
+						plan.BackendListeners = append(plan.BackendListeners, currentBackendListener)
+					}
+				}
+			} else if currentTag == "CookieManager" {
+				if enabledAttr != "false" {
+					currentCookieManager = &domain.CookieManager{}
+					if currentThreadGroup != nil {
+						currentThreadGroup.CookieManager = currentCookieManager
+					} else {
+						plan.CookieManager = currentCookieManager
+					}
+				}
+			} else if currentTag == "CacheManager" {
+				if enabledAttr != "false" {
+					currentCacheManager = &domain.CacheManager{
+						MaxSize: 5000,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.CacheManager = currentCacheManager
+					} else {
+						plan.CacheManager = currentCacheManager
+					}
+				}
+			} else if currentTag == "CounterConfig" {
+				if enabledAttr != "false" {
+					currentCounter = &domain.Counter{
+						Start: "0",
+						Incr:  "1",
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.Counters = append(currentThreadGroup.Counters, currentCounter)
+					} else {
+						plan.Counters = append(plan.Counters, currentCounter)
+					}
+				}
+			} else if currentTag == "DNSCacheManager" {
+				if enabledAttr != "false" {
+					currentDNSCacheManager = &domain.DNSCacheManager{
+						Hosts: make(map[string]string),
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.DNSCacheManager = currentDNSCacheManager
+					} else {
+						plan.DNSCacheManager = currentDNSCacheManager
+					}
+				}
+			} else if currentTag == "AuthManager" {
+				if enabledAttr != "false" {
+					currentAuthManager = &domain.AuthManager{}
+					if currentThreadGroup != nil {
+						currentThreadGroup.AuthManager = currentAuthManager
+					} else {
+						plan.AuthManager = currentAuthManager
+					}
+				}
+			} else if currentTag == "RandomVariableConfig" {
+				if enabledAttr != "false" {
+					currentRandomVariable = &domain.RandomVariable{
+						MinimumValue: "1",
+						MaximumValue: "100",
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.RandomVariables = append(currentThreadGroup.RandomVariables, currentRandomVariable)
+					} else {
+						plan.RandomVariables = append(plan.RandomVariables, currentRandomVariable)
+					}
+				}
+			} else if currentTag == "elementProp" && currentCookieManager != nil {
+				var isCookie bool
+				for _, attr := range se.Attr {
+					if attr.Name.Local == "elementType" && attr.Value == "Cookie" {
+						isCookie = true
+					}
+				}
+				if isCookie {
+					currentCookie = &domain.Cookie{Name: nameAttr}
+				}
+			} else if currentTag == "elementProp" && currentAuthManager != nil {
+				var isAuth bool
+				for _, attr := range se.Attr {
+					if attr.Name.Local == "elementType" && attr.Value == "Authorization" {
+						isAuth = true
+					}
+				}
+				if isAuth {
+					currentAuthorization = &domain.Authorization{}
 				}
 			}
 
@@ -167,12 +360,93 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inHeaderManager = false
 			} else if se.Name.Local == "ConfigTestElement" {
 				inConfigTestElement = false
-			} else if se.Name.Local == "FloatProperty" {
+			} else if se.Name.Local == "FloatProperty" || se.Name.Local == "doubleProp" {
 				inFloatProperty = false
+				floatPropName = ""
 			} else if se.Name.Local == "name" && inFloatProperty {
 				floatPropNameState = false
 			} else if se.Name.Local == "value" && inFloatProperty {
 				floatPropValueState = false
+			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" || se.Name.Local == "GaussianRandomTimer" || se.Name.Local == "PoissonRandomTimer" || se.Name.Local == "SyncTimer" {
+				currentTimer = nil
+			} else if se.Name.Local == "ConstantThroughputTimer" || se.Name.Local == "PreciseThroughputTimer" {
+				currentThroughputTimer = nil
+			} else if se.Name.Local == "JSONPostProcessor" {
+				inJSONExtractor = false
+				if currentJSONExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentJSONExtractor)
+					}
+				}
+				currentJSONExtractor = nil
+			} else if se.Name.Local == "RegexExtractor" {
+				inRegexExtractor = false
+				if currentRegexExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, domain.NewRegexExtractor(
+							currentRegexExtractor.ReferenceName,
+							currentRegexExtractor.Regex,
+							currentRegexExtractor.Template,
+							currentRegexExtractor.DefaultValueStr,
+							currentRegexExtractor.MatchNo,
+						))
+					}
+				}
+				currentRegexExtractor = nil
+			} else if se.Name.Local == "ResponseAssertion" {
+				inResponseAssertion = false
+				if currentResponseAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentResponseAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentResponseAssertion)
+					}
+				}
+				currentResponseAssertion = nil
+			} else if se.Name.Local == "JSONPathAssertion" {
+				inJSONAssertion = false
+				if currentJSONAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentJSONAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentJSONAssertion)
+					}
+				}
+				currentJSONAssertion = nil
+			} else if se.Name.Local == "CSVDataSet" {
+				currentCSVDataSet = nil
+			} else if se.Name.Local == "CookieManager" {
+				currentCookieManager = nil
+			} else if se.Name.Local == "CacheManager" {
+				currentCacheManager = nil
+			} else if se.Name.Local == "CounterConfig" {
+				currentCounter = nil
+			} else if se.Name.Local == "DNSCacheManager" {
+				currentDNSCacheManager = nil
+			} else if se.Name.Local == "AuthManager" {
+				currentAuthManager = nil
+			} else if se.Name.Local == "RandomVariableConfig" {
+				currentRandomVariable = nil
+			} else if se.Name.Local == "ResultCollector" {
+				currentResultCollector = nil
+			} else if se.Name.Local == "BackendListener" {
+				currentBackendListener = nil
+			} else if se.Name.Local == "elementProp" && currentCookie != nil {
+				if currentCookieManager != nil {
+					currentCookieManager.Cookies = append(currentCookieManager.Cookies, *currentCookie)
+				}
+				currentCookie = nil
+			} else if se.Name.Local == "elementProp" && currentAuthorization != nil {
+				if currentAuthManager != nil {
+					currentAuthManager.AuthList = append(currentAuthManager.AuthList, *currentAuthorization)
+				}
+				currentAuthorization = nil
 			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
 				currentTimer = nil
 			} else if se.Name.Local == "HTTPSamplerProxy" && currentReq != nil {
@@ -218,6 +492,23 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					plan.UserDefinedVariables[userParamNames[i]] = userParamValues[i]
 				}
 				userParamState = ""
+			} else if se.Name.Local == "collectionProp" {
+				inDNSServers = false
+				inDNSHosts = false
+				if inUltimateRow {
+					inUltimateRow = false
+					if currentThreadGroup != nil && currentThreadGroup.UltimateConfig != nil && len(ultimateRowVals) >= 5 {
+						currentThreadGroup.UltimateConfig.Records = append(currentThreadGroup.UltimateConfig.Records, domain.UltimateScheduleRecord{
+							StartThreads: ultimateRowVals[0],
+							InitialDelay: ultimateRowVals[1],
+							StartupTime:  ultimateRowVals[2],
+							HoldLoadFor:  ultimateRowVals[3],
+							ShutdownTime: ultimateRowVals[4],
+						})
+					}
+				} else if inUltimateData {
+					inUltimateData = false
+				}
 			}
 
 		case xml.CharData:
@@ -233,9 +524,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 			case "value":
 				if floatPropValueState {
-					if floatPropName == "ThroughputController.percentThroughput" {
+					switch floatPropName {
+					case "ThroughputController.percentThroughput":
 						if v, err := strconv.ParseFloat(val, 64); err == nil {
 							pendingWeight = v
+						}
+					case "throughput":
+						if currentThroughputTimer != nil {
+							currentThroughputTimer.Throughput = val
 						}
 					}
 				}
@@ -243,7 +539,96 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if nameAttr == "HTTPSampler.postBodyRaw" && val == "true" {
 					postBodyRaw = true
 				}
+				if currentCSVDataSet != nil {
+					switch nameAttr {
+					case "ignoreFirstLine":
+						currentCSVDataSet.IgnoreFirstLine = (val == "true")
+					case "quotedData":
+						currentCSVDataSet.QuotedData = (val == "true")
+					case "recycle":
+						currentCSVDataSet.Recycle = (val == "true" || val == "") // default true in JMeter
+					case "stopThread":
+						currentCSVDataSet.StopThread = (val == "true")
+					}
+				}
+				if currentCookieManager != nil {
+					switch nameAttr {
+					case "CookieManager.clearEachIteration":
+						currentCookieManager.ClearEachIteration = (val == "true")
+					case "CookieManager.controlledByThread":
+						currentCookieManager.ControlledByThread = (val == "true")
+					}
+				}
+				if currentJSONAssertion != nil {
+					switch nameAttr {
+					case "JSONVALIDATION":
+						currentJSONAssertion.JSONValidation = (val == "true")
+					case "EXPECT_NULL":
+						currentJSONAssertion.ExpectNull = (val == "true")
+					case "INVERT":
+						currentJSONAssertion.Invert = (val == "true")
+					case "ISREGEX":
+						currentJSONAssertion.IsRegex = (val == "true")
+					}
+				}
+				if currentCookie != nil && nameAttr == "Cookie.secure" {
+					currentCookie.Secure = (val == "true")
+				}
+				if currentCacheManager != nil {
+					switch nameAttr {
+					case "clearEachIteration":
+						currentCacheManager.ClearEachIteration = (val == "true")
+					case "useExpires":
+						currentCacheManager.UseExpires = (val == "true")
+					}
+				}
+				if currentCounter != nil && nameAttr == "CounterConfig.per_user" {
+					currentCounter.PerUser = (val == "true")
+				}
+				if currentDNSCacheManager != nil {
+					switch nameAttr {
+					case "DNSCacheManager.clearEachIteration":
+						currentDNSCacheManager.ClearEachIteration = (val == "true")
+					case "DNSCacheManager.isCustomResolver":
+						currentDNSCacheManager.IsCustomResolver = (val == "true")
+					}
+				}
+				if currentAuthManager != nil && nameAttr == "AuthManager.clearEachIteration" {
+					currentAuthManager.ClearEachIteration = (val == "true")
+				}
+				if currentRandomVariable != nil && nameAttr == "perThread" {
+					currentRandomVariable.PerThread = (val == "true")
+				}
+				if currentResultCollector != nil && nameAttr == "ResultCollector.error_logging" {
+					currentResultCollector.ErrorLogging = (val == "true")
+				}
+			case "intProp":
+				if currentCacheManager != nil && nameAttr == "maxSize" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentCacheManager.MaxSize = v
+					}
+				}
+				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
+					if nameAttr == "groupSize" {
+						currentTimer.GroupSize = val
+					}
+				}
+				if currentResponseAssertion != nil && nameAttr == "Assertion.test_type" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentResponseAssertion.TestType = v
+					}
+				}
+			case "longProp":
+				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
+					if nameAttr == "timeoutInMs" {
+						currentTimer.TimeoutInMs = val
+					}
+				}
 			case "stringProp":
+				if inUltimateRow {
+					ultimateRowVals = append(ultimateRowVals, val)
+					continue
+				}
 				switch nameAttr {
 				case "HTTPSampler.domain":
 					if inConfigTestElement {
@@ -271,6 +656,30 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if currentTimer != nil {
 						currentTimer.Range = val
 					}
+				case "timeoutInMs":
+					if currentTimer != nil && currentTimer.Type == "SyncTimer" {
+						currentTimer.TimeoutInMs = val
+					}
+				case "Assertion.custom_message":
+					if currentResponseAssertion != nil {
+						currentResponseAssertion.CustomFailure = val
+					}
+				case "Assertion.test_field":
+					if currentResponseAssertion != nil {
+						currentResponseAssertion.TestField = val
+					}
+				case "JSON_PATH":
+					if currentJSONAssertion != nil {
+						currentJSONAssertion.JSONPath = val
+					}
+				case "EXPECTED_VALUE":
+					if currentJSONAssertion != nil {
+						currentJSONAssertion.ExpectedValue = val
+					}
+				case "throughput":
+					if currentThroughputTimer != nil {
+						currentThroughputTimer.Throughput = val
+					}
 				case "HTTPSampler.protocol":
 					if inConfigTestElement {
 						defProtocol = val
@@ -289,6 +698,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							currentThreadGroup.SteppingConfig.MaxRate = val
 						}
 					}
+				case "OpenModelThreadGroup.schedule":
+					if currentThreadGroup != nil {
+						currentThreadGroup.OpenModelSchedule = val
+					}
 				case "Threads initial delay":
 					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
 						currentThreadGroup.SteppingConfig.InitialDelay = val
@@ -304,6 +717,26 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "flighttime":
 					if currentThreadGroup != nil && currentThreadGroup.SteppingConfig != nil {
 						currentThreadGroup.SteppingConfig.HoldDuration = val
+					}
+				case "TargetLevel":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.TargetLevel = val
+					}
+				case "RampUp":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.RampUp = val
+					}
+				case "Steps":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.Steps = val
+					}
+				case "Hold":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.Hold = val
+					}
+				case "Unit":
+					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
+						currentThreadGroup.ConcurrencyConfig.Unit = val
 					}
 				case "ThroughputController.maxThroughput":
 					if v, err := strconv.ParseFloat(val, 64); err == nil {
@@ -337,7 +770,162 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						}
 						currentHeaderName = ""
 					}
+				case "JSONPostProcessor.referenceNames":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						currentJSONExtractor.ReferenceName = val
+					}
+				case "JSONPostProcessor.jsonPathExprs":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						currentJSONExtractor.JSONPathExpr = val
+					}
+				case "JSONPostProcessor.defaultValues":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						currentJSONExtractor.DefaultValueStr = val
+					}
+				case "JSONPostProcessor.match_numbers":
+					if inJSONExtractor && currentJSONExtractor != nil {
+						if num, err := strconv.Atoi(val); err == nil {
+							currentJSONExtractor.MatchNo = num
+						}
+					}
+				case "RegexExtractor.refname":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.ReferenceName = val
+					}
+				case "RegexExtractor.regex":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.Regex = val
+					}
+				case "RegexExtractor.template":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.Template = val
+					}
+				case "RegexExtractor.default":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						currentRegexExtractor.DefaultValueStr = val
+					}
+				case "RegexExtractor.match_number":
+					if inRegexExtractor && currentRegexExtractor != nil {
+						if num, err := strconv.Atoi(val); err == nil {
+							currentRegexExtractor.MatchNo = num
+						}
+					}
+					// Removed misplaced default block
+				case "filename":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.Filename = val
+					}
+					if currentResultCollector != nil {
+						currentResultCollector.Filename = val
+					}
+				case "fileEncoding":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.FileEncoding = val
+					}
+				case "variableNames":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.VariableNames = val
+					}
+				case "delimiter":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.Delimiter = val
+					}
+				case "shareMode":
+					if currentCSVDataSet != nil {
+						currentCSVDataSet.ShareMode = val
+					}
+				case "Cookie.value":
+					if currentCookie != nil {
+						currentCookie.Value = val
+					}
+				case "Cookie.domain":
+					if currentCookie != nil {
+						currentCookie.Domain = val
+					}
+				case "Cookie.path":
+					if currentCookie != nil {
+						currentCookie.Path = val
+					}
+				case "CounterConfig.start":
+					if currentCounter != nil {
+						currentCounter.Start = val
+					}
+				case "CounterConfig.end":
+					if currentCounter != nil {
+						currentCounter.End = val
+					}
+				case "CounterConfig.incr":
+					if currentCounter != nil {
+						currentCounter.Incr = val
+					}
+				case "CounterConfig.name":
+					if currentCounter != nil {
+						currentCounter.Name = val
+					}
+				case "CounterConfig.format":
+					if currentCounter != nil {
+						currentCounter.Format = val
+					}
+				case "StaticHost.Name":
+					if currentDNSCacheManager != nil && inDNSHosts {
+						currentStaticHostName = val
+					}
+				case "StaticHost.Address":
+					if currentDNSCacheManager != nil && inDNSHosts && currentStaticHostName != "" {
+						currentDNSCacheManager.Hosts[currentStaticHostName] = val
+						currentStaticHostName = ""
+					}
+				case "Authorization.url":
+					if currentAuthorization != nil {
+						currentAuthorization.URL = val
+					}
+				case "Authorization.username":
+					if currentAuthorization != nil {
+						currentAuthorization.Username = val
+					}
+				case "Authorization.password":
+					if currentAuthorization != nil {
+						currentAuthorization.Password = val
+					}
+				case "Authorization.mechanism":
+					if currentAuthorization != nil {
+						currentAuthorization.Mechanism = val
+					}
+				case "maximumValue":
+					if currentRandomVariable != nil {
+						currentRandomVariable.MaximumValue = val
+					}
+				case "minimumValue":
+					if currentRandomVariable != nil {
+						currentRandomVariable.MinimumValue = val
+					}
+				case "outputFormat":
+					if currentRandomVariable != nil {
+						currentRandomVariable.Format = val
+					}
+				case "randomSeed":
+					if currentRandomVariable != nil {
+						currentRandomVariable.RandomSeed = val
+					}
+				case "variableName":
+					if currentRandomVariable != nil {
+						currentRandomVariable.Name = val
+					}
+				case "classname":
+					if currentBackendListener != nil {
+						currentBackendListener.Classname = val
+					}
 				default:
+					if inResponseAssertion && currentResponseAssertion != nil {
+						if !strings.HasPrefix(nameAttr, "Assertion.") {
+							currentResponseAssertion.TestStrings = append(currentResponseAssertion.TestStrings, val)
+						}
+					}
+					_ = inJSONAssertion
+
+					if inDNSServers && currentDNSCacheManager != nil {
+						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
+					}
 					// Handle UserParameters variables
 					if inUserParameters {
 						switch userParamState {
@@ -347,7 +935,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							userParamValues = append(userParamValues, val)
 						}
 					}
-			}
+				}
 			}
 		}
 	}

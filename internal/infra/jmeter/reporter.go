@@ -115,13 +115,13 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 		recvStr := record[4]
 		errStr := record[5]
 		// body is record[6], headers is record[7]
-		
+
 		// Decode vegeta csv format: unix_timestamp_ns, status_code, latency_ns, bytes_out, bytes_in, error, body, name, seq, method, url, headers
 		urlStr := ""
 		if len(record) > 10 {
 			urlStr = record[10]
 		}
-		
+
 		code, _ := strconv.Atoi(codeStr)
 		success := "false"
 		if code >= 200 && code < 400 && errStr == "" {

@@ -58,32 +58,22 @@ Because `vjm` translates JMeter's **Thread-based, sequential state** model into 
 
 *   **Timers (e.g., Constant Timer, Synchronizing Timer)**: Vegeta controls load via a global `-rate` (TPS) rather than per-thread sleeps. Timers are parsed but cannot physically delay individual requests within Vegeta's stateless execution flow.
 *   **Logic Controllers (e.g., If, While, Loop, ForEach)**: Vegeta fires predefined targets continuously. It cannot conditionally branch or loop based on the outcome of a previous request.
-*   **Post-Processors & Extractors (e.g., JSON Extractor)**: `vjm` cannot extract a value from Request A's response (like a token) and dynamically inject it into Request B in real-time, as Vegeta does not support request chaining.
-*   **Stateful Configs (e.g., HTTP Cookie Manager)**: Vegeta does not maintain separate cookie jars or browser-like sessions per worker.
+*   **Stateful Configs (e.g., HTTP Cookie Manager)**: Vegeta does not maintain separate cookie jars or browser-like sessions per worker. (However, variable chaining using Extractors is supported)
 *   **Assertions**: Vegeta strictly measures HTTP status codes and latencies. It does not inspect response bodies to assert text matches or JSON paths.
 
-*(Instead of sequential state, `vjm` relies on **Multi-Sampler Support (Weights)** to distribute traffic proportionally across multiple independent APIs.)*
+*(For sequential state scenarios, `vjm` switches to its own StatefulAttacker mode for scenarios with Extractors. Otherwise, it relies on **Multi-Sampler Support (Weights)** to distribute traffic proportionally across multiple independent APIs.)*
 
 ---
 
 ## Prerequisites
 
-The following tools must be installed on the machine running `vjm`.
+`vjm` is a statically compiled Go binary with **no external dependencies required** to run a load test.
 
 | Tool | Purpose | Installation Check |
 |------|---------|-------------------|
-| [Vegeta](https://github.com/tsenart/vegeta) | HTTP load generation engine | `vegeta -version` |
 | [Apache JMeter](https://jmeter.apache.org/) | HTML report generation (Optional) | `$JMETER_HOME/bin/jmeter -v` |
 
-```bash
-# Example: Installing Vegeta (Linux)
-go install github.com/tsenart/vegeta@latest
-
-# Or download the binary directly from GitHub Releases
-# https://github.com/tsenart/vegeta/releases
-```
-
-> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself.
+> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself. Vegeta is embedded directly into the `vjm` engine.
 
 ---
 
@@ -263,6 +253,34 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 | `${__P(key,default)}` | References a properties value | `${__P(target.host,localhost)}` |
 | `${__eval(expr)}` | Re-evaluates an expression | `${__eval(${myVar})}` |
 | `${__FileToString(path)}` | Loads file contents as a string | `${__FileToString(body.json)}` |
+| `${__UUID()}` | Generates a UUID v4 | `${__UUID()}` |
+| `${__property(key,var,def)}` | References a property (can be saved) | `${__property(target.host,MYVAR,localhost)}` |
+| `${__V(varName,def)}` | Evaluates a variable name | `${__V(A_${N})}` |
+| `${__Random(min,max,var)}` | Generates a random integer | `${__Random(1,100,MYVAR)}` |
+| `${__intSum(a,b,var)}` | Adds multiple integers | `${__intSum(2,5,MYVAR)}` |
+| `${__longSum(a,b,var)}` | Adds multiple long integers | `${__longSum(2,5,MYVAR)}` |
+| `${__urlencode(str)}` | URL encodes a string | `${__urlencode(${myVar})}` |
+| `${__urldecode(str)}` | URL decodes a string | `${__urldecode(${myVar})}` |
+| `${__toLowerCase(str,var)}` | Converts string to lowercase | `${__toLowerCase(HELLO)}` |
+| `${__toUpperCase(str,var)}` | Converts string to uppercase | `${__toUpperCase(hello)}` |
+| `${__escapeHtml(str)}` | Escapes HTML characters | `${__escapeHtml(<b>Test</b>)}` |
+| `${__unescapeHtml(str)}` | Unescapes HTML characters | `${__unescapeHtml(&lt;b&gt;Test&lt;/b&gt;)}` |
+| `${__machineIP()}` | Returns local IP address | `${__machineIP()}` |
+| `${__machineName()}` | Returns local host name | `${__machineName()}` |
+| `${__md5(str,var)}` | Computes MD5 hash | `${__md5(hello)}` |
+| `${__digest(algo,str,salt,upper,var)}` | Computes hash (MD5, SHA-1, SHA-256, SHA-512) | `${__digest(SHA-256,hello)}` |
+| `${__split(str,var,delim)}` | Splits string into variables | `${__split(a\,b\,c,MYVAR,\,)}` |
+| `${__dateTimeConvert(date,src,tgt,var)}` | Converts date format | `${__dateTimeConvert(01012026,ddMMyyyy,yyyy-MM-dd)}` |
+| `${__substring(str,begin,end,var)}` | Returns substring | `${__substring(hello,0,2)}` |
+| `${__isPropDefined(key)}` | Tests if property exists | `${__isPropDefined(target)}` |
+| `${__isVarDefined(var)}` | Tests if variable exists | `${__isVarDefined(MYVAR)}` |
+| `${__setProperty(key,val,ret)}` | Sets property value | `${__setProperty(target,localhost,false)}` |
+| `${__counter(TRUE/FALSE,var)}` | Global or per-thread counter | `${__counter(FALSE,MYVAR)}` |
+| `${__CSVRead(file,col|next)}` | Reads CSV column | `${__CSVRead(test.csv,0)}` |
+| `${__evalVar(var)}` | Evaluates expression in variable | `${__evalVar(MYVAR)}` |
+| `${__changeCase(str,mode,var)}` | Changes case (UPPER/LOWER/CAPITALIZE) | `${__changeCase(hello,UPPER)}` |
+| `${__char(num...)}` | Generates Unicode char from number | `${__char(0x41)}` |
+| `${__XPath(file,expr)}` | Use an XPath expression to read from a file | `${__XPath(data.xml,//node)}` |
 | `${varName}` | Variable reference | `${target.host}` |
 
 ---
@@ -345,11 +363,142 @@ Error Set:
 
 ## Roadmap
 
+### Key Milestones
 - [x] **SteppingThreadGroup Support**: Implement JMeter's stepped load increase scenarios
 - [x] **Multi-Sampler Support**: Handle multiple HTTPSamplers within a ThreadGroup based on weights
-- [ ] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
+- [x] **Stateful Variable Chaining (Extractors)**: Support sequential scenarios by extracting values from previous responses and injecting them into subsequent requests
+- [x] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
 - [ ] **WebSocket Support**: Integrate WS protocol load testing
 - [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
+
+### Thread Group Support
+- [x] **Thread Group** (Standard)
+- [x] **jp@gc - Stepping Thread Group**
+- [x] **Open Model Thread Group**
+- [x] **bzm - Concurrency Thread Group**
+- [ ] **jp@gc - Ultimate Thread Group**
+- [ ] **bzm - Arrivals Thread Group**
+- [ ] **bzm - Free-Form Arrivals Thread Group**
+- [ ] **setUp Thread Group**
+- [ ] **tearDown Thread Group**
+
+### Logic Controllers
+- [ ] **If Controller**
+- [ ] **Transaction Controller**
+- [ ] **Loop Controller**
+- [ ] **While Controller**
+- [ ] **Critical Section Controller**
+- [ ] **ForEach Controller**
+- [ ] **Include Controller**
+- [ ] **Interleave Controller**
+- [ ] **Once Only Controller**
+- [ ] **Random Controller**
+- [ ] **Random Order Controller**
+- [ ] **Recording Controller**
+- [ ] **Runtime Controller**
+- [ ] **Simple Controller**
+- [x] **Throughput Controller**
+- [ ] **Module Controller**
+- [ ] **Switch Controller**
+
+### Config Elements
+- [x] **HTTP Header Manager**
+- [x] **HTTP Request Defaults**
+- [x] **User Defined Variables**
+- [x] **CSV Data Set Config**
+- [x] **HTTP Cookie Manager**
+- [x] **HTTP Cache Manager**
+- ~~[ ] **Bolt Connection Configuration**~~ (Excluded - JVM dependent)
+- [x] **Counter**
+- [x] **DNS Cache Manager**
+- ~~[ ] **FTP Request Defaults**~~ (Excluded - Non HTTP)
+- [x] **HTTP Authorization Manager**
+- ~~[ ] **JDBC Connection Configuration**~~ (Excluded - JVM dependent)
+- ~~[ ] **Java Request Defaults**~~ (Excluded - JVM dependent)
+- ~~[ ] **Keystore Configuration**~~ (Excluded - JVM dependent)
+- ~~[ ] **LDAP Extended Request Defaults**~~ (Excluded - JVM dependent)
+- ~~[ ] **LDAP Request Defaults**~~ (Excluded - JVM dependent)
+- ~~[ ] **Login Config Element**~~ (Excluded - Non HTTP)
+- [x] **Random Variable**
+- [ ] **Simple Config Element**
+- ~~[ ] **TCP Sampler Config**~~ (Excluded - Non HTTP)
+
+### Listeners
+- [x] **View Results Tree** (File output only)
+- [x] **Summary Report** (File output only)
+- [x] **Aggregate Report** (File output only)
+- [x] **Backend Listener** (Parsed, DB logic pending)
+- [x] **Aggregate Graph** (File output only)
+- [ ] **Assertion Results**
+- [ ] **Comparison Assertion Visualizer**
+- [ ] **Generate Summary Results**
+- [ ] **Graph Results**
+- [ ] **JSR223 Listener**
+- [ ] **Mailer Visualizer**
+- [ ] **Response Time Graph**
+- [ ] **Save Responses to a file**
+- [ ] **Simple Data Writer**
+- [ ] **View Results in Table**
+- [ ] **BeanShell Listener**
+
+### Timers
+- [x] **Constant Timer**
+- [x] **Uniform Random Timer**
+- [x] **Precise Throughput Timer** (Mapped to Vegeta Pacer)
+- [x] **Constant Throughput Timer** (Mapped to Vegeta Pacer)
+- [x] **Gaussian Random Timer**
+- ~~[ ] **JSR223 Timer**~~ (Excluded - JVM dependent script)
+- [x] **Poisson Random Timer**
+- [x] **Synchronizing Timer**
+- ~~[ ] **BeanShell Timer**~~ (Excluded - JVM dependent script)
+
+### Pre Processors
+- [x] **User Parameters**
+- [ ] **JSR223 PreProcessor**
+- [ ] **HTML Link Parser**
+- [ ] **HTTP URL Re-writing Modifier**
+- [ ] **JDBC PreProcessor**
+- [ ] **RegEx User Parameters**
+- [ ] **Sample Timeout**
+- [ ] **BeanShell PreProcessor**
+
+### Post Processors
+- [x] **JSON Extractor**
+- [x] **Regular Expression Extractor**
+- [ ] **CSS Selector Extractor**
+- [ ] **JSON JMESPath Extractor**
+- [ ] **Boundary Extractor**
+- [ ] **JSR223 PostProcessor**
+- [ ] **Debug PostProcessor**
+- [ ] **JDBC PostProcessor**
+- [ ] **Result Status Action Handler**
+- [ ] **XPath Extractor**
+- [ ] **XPath2 Extractor**
+- [ ] **BeanShell PostProcessor**
+
+### Assertions
+- [x] **Response Assertion**
+- [x] **JSON Assertion**
+- [ ] **Size Assertion**
+- [ ] **JSR223 Assertion**
+- [ ] **XPath Assertion**
+- [ ] **Compare Assertion**
+- [ ] **Duration Assertion**
+- [ ] **HTML Assertion**
+- [ ] **MD5Hex Assertion**
+- [ ] **SMIME Assertion**
+- [ ] **XML Assertion**
+- [ ] **XML Schema Assertion**
+- [ ] **XPath2 Assertion**
+- [ ] **BeanShell Assertion**
+
+### Test Fragment
+- [ ] **Test Fragment**
+
+### Non-Test Elements
+- [ ] **HTTP Mirror Server**
+- [ ] **HTTP(S) Test Script Recorder**
+- [ ] **Property Display**
 
 ---
 
