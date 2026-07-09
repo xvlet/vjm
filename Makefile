@@ -46,7 +46,7 @@ windows_amd64:
 	@rm -rf build_staging_$@
 	@mkdir -p build_staging_$@ $(BASE_DIR)
 	@GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o build_staging_$@/$(APP_NAME).exe $(CMD_PATH)
-	@cd build_staging_$@ && zip -q ../../$(BASE_DIR)/$(APP_NAME)_windows_amd64.zip $(APP_NAME).exe
+	@cd build_staging_$@ && zip -q ../$(BASE_DIR)/$(APP_NAME)_windows_amd64.zip $(APP_NAME).exe
 	@rm -rf build_staging_$@
 
 windows_arm64:
@@ -54,7 +54,7 @@ windows_arm64:
 	@rm -rf build_staging_$@
 	@mkdir -p build_staging_$@ $(BASE_DIR)
 	@GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o build_staging_$@/$(APP_NAME).exe $(CMD_PATH)
-	@cd build_staging_$@ && zip -q ../../$(BASE_DIR)/$(APP_NAME)_windows_arm64.zip $(APP_NAME).exe
+	@cd build_staging_$@ && zip -q ../$(BASE_DIR)/$(APP_NAME)_windows_arm64.zip $(APP_NAME).exe
 	@rm -rf build_staging_$@
 
 aix_ppc64:
