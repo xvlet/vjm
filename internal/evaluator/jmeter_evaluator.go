@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/antchfx/xmlquery"
+	"github.com/expr-lang/expr"
 )
 
 // SharedContext holds thread-safe global states
@@ -40,6 +41,40 @@ func (dummyMutex) Lock()    {}
 func (dummyMutex) Unlock()  {}
 func (dummyMutex) RLock()   {}
 func (dummyMutex) RUnlock() {}
+
+// EvaluateLogic evaluates a boolean condition string (JMeter If/While Controller).
+func (e *DefaultEvaluator) EvaluateLogic(condition string) bool {
+	if condition == "" {
+		return true // Default JMeter behavior: empty condition is true (or ignored)
+	}
+
+	// 1. Resolve any variables and functions (e.g., __jexl3(...) -> true)
+	resolved := strings.TrimSpace(e.Evaluate(condition))
+
+	// 2. If it resolved to "true" or "false" directly
+	if strings.EqualFold(resolved, "true") {
+		return true
+	}
+	if strings.EqualFold(resolved, "false") {
+		return false
+	}
+
+	// 3. Fallback: it might be a raw expression like `"200" == "200"`
+	res, err := expr.Eval(resolved, nil)
+	if err != nil {
+		return false // On error, treat as false
+	}
+
+	if b, ok := res.(bool); ok {
+		return b
+	}
+	// If it evaluated to a string "true"/"false"
+	if s, ok := res.(string); ok {
+		return strings.EqualFold(s, "true")
+	}
+
+	return false
+}
 
 // DefaultEvaluator processes JMeter variables and functions
 type DefaultEvaluator struct {
@@ -211,6 +246,18 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 		}
 		format := mapJavaTimeToGo(args[0])
 		return time.Now().Format(format)
+
+	case "__jexl3", "__groovy", "__javaScript":
+		if len(args) == 0 {
+			return ""
+		}
+		// The first argument is the expression, evaluate inner variables first
+		exprStr := e.Evaluate(args[0])
+		res, err := expr.Eval(exprStr, nil)
+		if err != nil {
+			return "false" // Default fallback on error
+		}
+		return fmt.Sprintf("%v", res)
 
 	case "__RandomString":
 		length := 10

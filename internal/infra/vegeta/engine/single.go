@@ -69,6 +69,11 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			var current float64
 			dist := make([]samplerDist, 0, len(tg.Samplers))
 			for _, s := range tg.Samplers {
+				if s.IfCondition != "" {
+					if !eval.EvaluateLogic(s.IfCondition) {
+						continue
+					}
+				}
 				current += s.Weight
 				dist = append(dist, samplerDist{
 					sampler:    s,

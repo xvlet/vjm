@@ -403,7 +403,7 @@ Error Set:
 - [x] **tearDown Thread Group**
 
 ### Logic Controllers (논리 컨트롤러)
-- [ ] **If Controller**
+- [x] **If Controller**
 - [ ] **Transaction Controller**
 - [ ] **Loop Controller**
 - [ ] **While Controller**

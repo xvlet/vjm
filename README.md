@@ -404,7 +404,7 @@ Error Set:
 - [x] **tearDown Thread Group**
 
 ### Logic Controllers
-- [ ] **If Controller**
+- [x] **If Controller**
 - [ ] **Transaction Controller**
 - [ ] **Loop Controller**
 - [ ] **While Controller**

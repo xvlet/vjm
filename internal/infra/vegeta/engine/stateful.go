@@ -633,6 +633,12 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 					// Execute samplers sequentially
 					for step, sampler := range tg.Samplers {
+						if sampler.IfCondition != "" {
+							if !session.Evaluator.EvaluateLogic(sampler.IfCondition) {
+								continue
+							}
+						}
+
 						if ctx.Err() != nil || (a.dur > 0 && time.Since(attackStart) >= a.dur) {
 							break
 						}

@@ -52,6 +52,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var activeWeight = 1.0
 	weightMap := make(map[int]float64)
 
+	var pendingIfCondition string
+	ifConditionMap := make(map[int]string)
+
 	var inFloatProperty bool
 	var floatPropName string
 	var floatPropNameState bool
@@ -125,6 +128,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					activeWeight = pendingWeight
 					pendingWeight = 0
 				}
+				if pendingIfCondition != "" {
+					ifConditionMap[hashTreeDepth] = pendingIfCondition
+					pendingIfCondition = ""
+				}
 			}
 
 			if strings.HasSuffix(currentTag, "ThreadGroup") {
@@ -155,14 +162,26 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
 			} else if currentTag == "HTTPSamplerProxy" {
+				activeIfCondition := ""
+				var conditions []string
+				for d := 1; d <= hashTreeDepth; d++ {
+					if cond, ok := ifConditionMap[d]; ok && cond != "" {
+						conditions = append(conditions, cond)
+					}
+				}
+				if len(conditions) > 0 {
+					activeIfCondition = strings.Join(conditions, " && ")
+				}
+
 				currentReq = &domain.RequestTemplate{
 					Headers: make(map[string]string),
 				}
 				if currentThreadGroup != nil {
 					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
-						Name:    nameAttr,
-						Request: currentReq,
-						Weight:  activeWeight,
+						Name:        nameAttr,
+						Request:     currentReq,
+						Weight:      activeWeight,
+						IfCondition: activeIfCondition,
 					})
 				}
 				// Reset sampler-specific URL parts
@@ -370,6 +389,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 		case xml.EndElement:
 			if se.Name.Local == "hashTree" {
 				delete(weightMap, hashTreeDepth)
+				delete(ifConditionMap, hashTreeDepth)
 				hashTreeDepth--
 				activeWeight = 1.0
 				for d := hashTreeDepth; d >= 0; d-- {
@@ -667,6 +687,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					continue
 				}
 				switch nameAttr {
+				case "IfController.condition":
+					pendingIfCondition = val
 				case "HTTPSampler.domain":
 					if inConfigTestElement {
 						defDomain = val

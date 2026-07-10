@@ -187,37 +187,38 @@ type FreeFormArrivalsConfig struct {
 // These will be leveraged in a future enhancement to support stepped load (e.g. SteppingThreadGroup)
 // by running Vegeta in multiple stages and merging the results.
 type ThreadGroup struct {
-	Name              string
-	ActionType        string // "setup", "main", "teardown"
-	NumThreads        int    // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
-	RampUp            int // TODO: seconds to ramp up to full load
-	Duration          int // TODO: total duration per step
-	Samplers          []*Sampler
+	Name                   string
+	ActionType             string // "setup", "main", "teardown"
+	NumThreads             int    // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
+	RampUp                 int    // TODO: seconds to ramp up to full load
+	Duration               int    // TODO: total duration per step
+	Samplers               []*Sampler
 	SteppingConfig         *SteppingConfig
 	ConcurrencyConfig      *ConcurrencyConfig
 	UltimateConfig         *UltimateConfig
 	ArrivalsConfig         *ArrivalsConfig
 	FreeFormArrivalsConfig *FreeFormArrivalsConfig
 	OpenModelSchedule      string // JMeter 5.5+ Open Model Thread Group DSL schedule
-	Timers            []*Timer
-	CSVDataSets       []*CSVDataSet
-	ResultCollectors  []*ResultCollector
-	BackendListeners  []*BackendListener
-	CookieManager     *CookieManager
-	CacheManager      *CacheManager
-	DNSCacheManager   *DNSCacheManager
-	AuthManager       *AuthManager
-	Counters          []*Counter
-	RandomVariables   []*RandomVariable
-	ThroughputTimers  []*ThroughputTimer
-	Assertions        []Assertion
+	Timers                 []*Timer
+	CSVDataSets            []*CSVDataSet
+	ResultCollectors       []*ResultCollector
+	BackendListeners       []*BackendListener
+	CookieManager          *CookieManager
+	CacheManager           *CacheManager
+	DNSCacheManager        *DNSCacheManager
+	AuthManager            *AuthManager
+	Counters               []*Counter
+	RandomVariables        []*RandomVariable
+	ThroughputTimers       []*ThroughputTimer
+	Assertions             []Assertion
 }
 
 // Sampler represents a JMeter HTTP Sampler
 type Sampler struct {
-	Name       string
-	Request    *RequestTemplate
-	Weight     float64
-	Extractors []Extractor
-	Assertions []Assertion
+	Name        string
+	Request     *RequestTemplate
+	Weight      float64
+	IfCondition string // JEXL3 or Groovy boolean condition string
+	Extractors  []Extractor
+	Assertions  []Assertion
 }
