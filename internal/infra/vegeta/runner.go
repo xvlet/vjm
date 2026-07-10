@@ -42,48 +42,87 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		return tgRunner.Run(ctx, plan, config, eval.Clone())
 	}
 
-	var wg sync.WaitGroup
-	errCh := make(chan error, len(plan.ThreadGroups))
-	tgPaths := make([]string, len(plan.ThreadGroups))
+	var setupGroups []*domain.ThreadGroup
+	var mainGroups []*domain.ThreadGroup
+	var teardownGroups []*domain.ThreadGroup
 
-	for i, tg := range plan.ThreadGroups {
-		wg.Add(1)
-		go func(idx int, threadGrp *domain.ThreadGroup) {
-			defer wg.Done()
-
-			subPlan := &domain.TestPlan{
-				Name:                 plan.Name,
-				ThreadGroups:         []*domain.ThreadGroup{threadGrp},
-				CSVDataSets:          plan.CSVDataSets,
-				CookieManager:        plan.CookieManager,
-				CacheManager:         plan.CacheManager,
-				DNSCacheManager:      plan.DNSCacheManager,
-				AuthManager:          plan.AuthManager,
-				Counters:             plan.Counters,
-				RandomVariables:      plan.RandomVariables,
-				UserDefinedVariables: plan.UserDefinedVariables,
-			}
-
-			subConfig := *config
-			subConfig.ResultBinPath = fmt.Sprintf("%s.tg%d", config.ResultBinPath, idx)
-
-			tgRunner := threadgroup.GetRunner(threadGrp)
-
-			if err := tgRunner.Run(ctx, subPlan, &subConfig, eval.Clone()); err != nil {
-				errCh <- err
-			} else {
-				tgPaths[idx] = subConfig.ResultBinPath
-			}
-		}(i, tg)
+	for _, tg := range plan.ThreadGroups {
+		switch tg.ActionType {
+		case "setup":
+			setupGroups = append(setupGroups, tg)
+		case "teardown":
+			teardownGroups = append(teardownGroups, tg)
+		default:
+			mainGroups = append(mainGroups, tg)
+		}
 	}
 
-	wg.Wait()
-	close(errCh)
+	var tgPaths []string
+	var pathMu sync.Mutex
+	tgIdx := 0
 
-	for err := range errCh {
-		if err != nil {
-			return err
+	runPhase := func(phase string, groups []*domain.ThreadGroup) error {
+		if len(groups) == 0 {
+			return nil
 		}
+		log.Printf("[VegetaRunner] Starting %s Phase with %d Thread Group(s)...", phase, len(groups))
+
+		var wg sync.WaitGroup
+		errCh := make(chan error, len(groups))
+
+		for _, tg := range groups {
+			wg.Add(1)
+			go func(idx int, threadGrp *domain.ThreadGroup) {
+				defer wg.Done()
+
+				subPlan := &domain.TestPlan{
+					Name:                 plan.Name,
+					ThreadGroups:         []*domain.ThreadGroup{threadGrp},
+					CSVDataSets:          plan.CSVDataSets,
+					CookieManager:        plan.CookieManager,
+					CacheManager:         plan.CacheManager,
+					DNSCacheManager:      plan.DNSCacheManager,
+					AuthManager:          plan.AuthManager,
+					Counters:             plan.Counters,
+					RandomVariables:      plan.RandomVariables,
+					UserDefinedVariables: plan.UserDefinedVariables,
+				}
+
+				subConfig := *config
+				subConfig.ResultBinPath = fmt.Sprintf("%s.tg%d", config.ResultBinPath, idx)
+
+				tgRunner := threadgroup.GetRunner(threadGrp)
+
+				if err := tgRunner.Run(ctx, subPlan, &subConfig, eval.Clone()); err != nil {
+					errCh <- err
+				} else {
+					pathMu.Lock()
+					tgPaths = append(tgPaths, subConfig.ResultBinPath)
+					pathMu.Unlock()
+				}
+			}(tgIdx, tg)
+			tgIdx++
+		}
+
+		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := runPhase("Setup", setupGroups); err != nil {
+		return err
+	}
+	if err := runPhase("Main", mainGroups); err != nil {
+		return err
+	}
+	if err := runPhase("Teardown", teardownGroups); err != nil {
+		return err
 	}
 
 	// Merge all parts into final result

@@ -399,8 +399,8 @@ Error Set:
 - [x] **jp@gc - Ultimate Thread Group**
 - [x] **bzm - Arrivals Thread Group**
 - [x] **bzm - Free-Form Arrivals Thread Group**
-- [ ] **setUp Thread Group**
-- [ ] **tearDown Thread Group**
+- [x] **setUp Thread Group**
+- [x] **tearDown Thread Group**
 
 ### Logic Controllers (논리 컨트롤러)
 - [ ] **If Controller**

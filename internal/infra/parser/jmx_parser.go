@@ -128,8 +128,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			}
 
 			if strings.HasSuffix(currentTag, "ThreadGroup") {
+				actionType := "main"
+				switch currentTag {
+				case "SetupThreadGroup":
+					actionType = "setup"
+				case "PostThreadGroup":
+					actionType = "teardown"
+				}
+
 				currentThreadGroup = &domain.ThreadGroup{
-					Name: nameAttr,
+					Name:       nameAttr,
+					ActionType: actionType,
 				}
 				switch currentTag {
 				case "kg.apc.jmeter.threads.SteppingThreadGroup":

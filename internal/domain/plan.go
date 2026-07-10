@@ -188,7 +188,8 @@ type FreeFormArrivalsConfig struct {
 // by running Vegeta in multiple stages and merging the results.
 type ThreadGroup struct {
 	Name              string
-	NumThreads        int // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
+	ActionType        string // "setup", "main", "teardown"
+	NumThreads        int    // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
 	RampUp            int // TODO: seconds to ramp up to full load
 	Duration          int // TODO: total duration per step
 	Samplers          []*Sampler
