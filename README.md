@@ -399,7 +399,7 @@ Error Set:
 - [x] **bzm - Concurrency Thread Group**
 - [x] **jp@gc - Ultimate Thread Group**
 - [x] **bzm - Arrivals Thread Group**
-- [ ] **bzm - Free-Form Arrivals Thread Group**
+- [x] **bzm - Free-Form Arrivals Thread Group**
 - [ ] **setUp Thread Group**
 - [ ] **tearDown Thread Group**
 

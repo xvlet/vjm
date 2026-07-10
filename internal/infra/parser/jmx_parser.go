@@ -69,6 +69,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var inUltimateRow bool
 	var ultimateRowVals []string
 
+	var inFreeFormData bool
+	var inFreeFormRow bool
+	var freeFormRowVals []string
+
 	var currentCSVDataSet *domain.CSVDataSet
 	var currentCookieManager *domain.CookieManager
 	var currentCookie *domain.Cookie
@@ -136,6 +140,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					currentThreadGroup.ArrivalsConfig = &domain.ArrivalsConfig{}
 				case "kg.apc.jmeter.threads.UltimateThreadGroup":
 					currentThreadGroup.UltimateConfig = &domain.UltimateConfig{}
+				case "com.blazemeter.jmeter.threads.arrivals.FreeFormArrivalsThreadGroup":
+					currentThreadGroup.FreeFormArrivalsConfig = &domain.FreeFormArrivalsConfig{}
 				}
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
@@ -174,10 +180,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					userParamState = "values"
 				case "ultimatethreadgroupdata":
 					inUltimateData = true
+				case "arrivals_schedule":
+					inFreeFormData = true
 				default:
 					if inUltimateData {
 						inUltimateRow = true
 						ultimateRowVals = []string{}
+					} else if inFreeFormData {
+						inFreeFormRow = true
+						freeFormRowVals = []string{}
 					}
 				}
 			} else if currentTag == "FloatProperty" {
@@ -510,6 +521,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				} else if inUltimateData {
 					inUltimateData = false
+				} else if inFreeFormRow {
+					inFreeFormRow = false
+					if currentThreadGroup != nil && currentThreadGroup.FreeFormArrivalsConfig != nil && len(freeFormRowVals) >= 3 {
+						currentThreadGroup.FreeFormArrivalsConfig.Schedule = append(currentThreadGroup.FreeFormArrivalsConfig.Schedule, domain.FreeFormScheduleItem{
+							Start:    freeFormRowVals[0],
+							End:      freeFormRowVals[1],
+							Duration: freeFormRowVals[2],
+						})
+					}
+				} else if inFreeFormData {
+					inFreeFormData = false
 				}
 			}
 
@@ -631,6 +653,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					ultimateRowVals = append(ultimateRowVals, val)
 					continue
 				}
+				if inFreeFormRow {
+					freeFormRowVals = append(freeFormRowVals, val)
+					continue
+				}
 				switch nameAttr {
 				case "HTTPSampler.domain":
 					if inConfigTestElement {
@@ -749,10 +775,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentThreadGroup.ConcurrencyConfig.Unit = val
 					} else if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
 						currentThreadGroup.ArrivalsConfig.Unit = val
+					} else if currentThreadGroup != nil && currentThreadGroup.FreeFormArrivalsConfig != nil {
+						currentThreadGroup.FreeFormArrivalsConfig.Unit = val
 					}
 				case "ConcurrencyLimit":
 					if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
 						currentThreadGroup.ArrivalsConfig.ConcurrencyLimit = val
+					} else if currentThreadGroup != nil && currentThreadGroup.FreeFormArrivalsConfig != nil {
+						currentThreadGroup.FreeFormArrivalsConfig.ConcurrencyLimit = val
 					}
 				case "ThroughputController.maxThroughput":
 					if v, err := strconv.ParseFloat(val, 64); err == nil {

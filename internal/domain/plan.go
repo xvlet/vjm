@@ -168,6 +168,20 @@ type ArrivalsConfig struct {
 	ConcurrencyLimit string
 }
 
+// FreeFormScheduleItem represents one row in the Free-Form Arrivals Thread Group schedule.
+type FreeFormScheduleItem struct {
+	Start    string
+	End      string
+	Duration string
+}
+
+// FreeFormArrivalsConfig represents the properties of a bzm - Free-Form Arrivals Thread Group.
+type FreeFormArrivalsConfig struct {
+	Schedule         []FreeFormScheduleItem
+	Unit             string
+	ConcurrencyLimit string
+}
+
 // ThreadGroup represents a JMeter Thread Group.
 // NumThreads, RampUp, and Duration are parsed from the JMX but not yet used by the runner.
 // These will be leveraged in a future enhancement to support stepped load (e.g. SteppingThreadGroup)
@@ -178,11 +192,12 @@ type ThreadGroup struct {
 	RampUp            int // TODO: seconds to ramp up to full load
 	Duration          int // TODO: total duration per step
 	Samplers          []*Sampler
-	SteppingConfig    *SteppingConfig
-	ConcurrencyConfig *ConcurrencyConfig
-	UltimateConfig    *UltimateConfig
-	ArrivalsConfig    *ArrivalsConfig
-	OpenModelSchedule string // JMeter 5.5+ Open Model Thread Group DSL schedule
+	SteppingConfig         *SteppingConfig
+	ConcurrencyConfig      *ConcurrencyConfig
+	UltimateConfig         *UltimateConfig
+	ArrivalsConfig         *ArrivalsConfig
+	FreeFormArrivalsConfig *FreeFormArrivalsConfig
+	OpenModelSchedule      string // JMeter 5.5+ Open Model Thread Group DSL schedule
 	Timers            []*Timer
 	CSVDataSets       []*CSVDataSet
 	ResultCollectors  []*ResultCollector

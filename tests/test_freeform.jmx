@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+    <hashTree>
+        <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan">
+            <elementProp name="TestPlan.user_defined_variables" elementType="Arguments"
+                guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
+                <collectionProp name="Arguments.arguments" />
+            </elementProp>
+        </TestPlan>
+        <hashTree>
+            <com.blazemeter.jmeter.threads.arrivals.FreeFormArrivalsThreadGroup
+                guiclass="com.blazemeter.jmeter.threads.arrivals.FreeFormArrivalsThreadGroupGui"
+                testclass="com.blazemeter.jmeter.threads.arrivals.FreeFormArrivalsThreadGroup"
+                testname="bzm - Free-Form Arrivals Thread Group">
+                <elementProp name="ThreadGroup.main_controller"
+                    elementType="com.blazemeter.jmeter.control.VirtualUserController" />
+                <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+                <collectionProp name="arrivals_schedule">
+                    <collectionProp name="123456789">
+                        <stringProp name="1">10</stringProp>
+                        <stringProp name="100">100</stringProp>
+                        <stringProp name="5">5</stringProp>
+                    </collectionProp>
+                    <collectionProp name="234567890">
+                        <stringProp name="100">100</stringProp>
+                        <stringProp name="100">100</stringProp>
+                        <stringProp name="5">5</stringProp>
+                    </collectionProp>
+                    <collectionProp name="345678901">
+                        <stringProp name="100">100</stringProp>
+                        <stringProp name="10">10</stringProp>
+                        <stringProp name="5">5</stringProp>
+                    </collectionProp>
+                </collectionProp>
+                <stringProp name="Unit">S</stringProp>
+                <stringProp name="ConcurrencyLimit">1000</stringProp>
+            </com.blazemeter.jmeter.threads.arrivals.FreeFormArrivalsThreadGroup>
+            <hashTree>
+                <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy"
+                    testname="HTTP Request">
+                    <stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
+                    <stringProp name="HTTPSampler.port">58080</stringProp>
+                    <stringProp name="HTTPSampler.protocol">http</stringProp>
+                    <stringProp name="HTTPSampler.path">/test/freeform</stringProp>
+                    <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+                    <stringProp name="HTTPSampler.method">GET</stringProp>
+                    <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+                    <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+                    <elementProp name="HTTPsampler.Arguments" elementType="Arguments"
+                        guiclass="HTTPArgumentsPanel" testclass="Arguments"
+                        testname="User Defined Variables">
+                        <collectionProp name="Arguments.arguments" />
+                    </elementProp>
+                </HTTPSamplerProxy>
+                <hashTree />
+            </hashTree>
+        </hashTree>
+    </hashTree>
+</jmeterTestPlan>
