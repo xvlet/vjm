@@ -35,7 +35,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 	var resultsChan <-chan *vegeta.Result
 
 	if isStateful {
-		workers := uint64(10)
+		workers := uint64(10000)
 		if config.Workers > 0 {
 			workers = uint64(config.Workers)
 		}
@@ -241,8 +241,12 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			}
 
 			elapsed := time.Since(attackStart).Round(time.Second)
-			log.Printf("[Dashboard] %02d:%02d | TPS: %5.1f | Avg: %5.1fms | P99: %5.1fms | Max: %5.1fms | Err: %3.1f%% | TotReq: %d",
-				int(elapsed.Minutes()), int(elapsed.Seconds())%60, tps, avgLatMs, p99, maxLat, errPct, tReqs)
+			tgName := "Global"
+			if len(plan.ThreadGroups) > 0 {
+				tgName = plan.ThreadGroups[0].Name
+			}
+			log.Printf("[Dashboard: %s] %02d:%02d | TPS: %5.1f | Avg: %5.1fms | P99: %5.1fms | Max: %5.1fms | Err: %3.1f%% | TotReq: %d",
+				tgName, int(elapsed.Minutes()), int(elapsed.Seconds())%60, tps, avgLatMs, p99, maxLat, errPct, tReqs)
 		}
 
 		if resultsChan == nil {

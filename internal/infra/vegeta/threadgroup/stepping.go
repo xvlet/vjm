@@ -58,20 +58,22 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 			currentRate = maxRate
 		}
 
-		durationStr := fmt.Sprintf("%ds", stepDurSec)
-		log.Printf("[VegetaRunner] --- Stepping: Running at %d TPS for %s ---", currentRate, durationStr)
+		if stepDurSec > 0 {
+			durationStr := fmt.Sprintf("%ds", stepDurSec)
+			log.Printf("[VegetaRunner] --- Stepping: Running at %d TPS for %s ---", currentRate, durationStr)
 
-		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
-		binPaths = append(binPaths, stepBinPath)
-		config.ResultBinPath = stepBinPath
+			stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
+			binPaths = append(binPaths, stepBinPath)
+			config.ResultBinPath = stepBinPath
 
-		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: currentRate, Per: time.Second}
-		err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
-		if err != nil {
-			return err
+			dur, _ := time.ParseDuration(durationStr)
+			pacer := vegeta.ConstantPacer{Freq: currentRate, Per: time.Second}
+			err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
+			if err != nil {
+				return err
+			}
+			stepIndex++
 		}
-		stepIndex++
 	}
 
 	if holdDurSec > 0 {

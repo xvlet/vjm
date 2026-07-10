@@ -389,13 +389,22 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					return
 				}
 				elapsed := time.Since(attackStart)
+				if a.dur > 0 && elapsed >= a.dur {
+					close(tokens)
+					return
+				}
 				wait, stop := a.pacer.Pace(elapsed, hits)
 				if stop {
 					close(tokens)
 					return
 				}
-				if wait > 0 {
+				if wait > 5*time.Millisecond {
 					time.Sleep(wait)
+				} else if wait > 0 {
+					target := time.Now().Add(wait)
+					for time.Now().Before(target) {
+						// spin-wait for precise pacing
+					}
 				}
 				select {
 				case tokens <- struct{}{}:
