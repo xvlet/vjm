@@ -80,10 +80,6 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 		durationStr := fmt.Sprintf("%ds", holdDurSec)
 		log.Printf("[VegetaRunner] --- Stepping: Holding Max Rate %d TPS for %s ---", maxRate, durationStr)
 
-		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
-		binPaths = append(binPaths, stepBinPath)
-		config.ResultBinPath = stepBinPath
-
 		dur, _ := time.ParseDuration(durationStr)
 		pacer := vegeta.ConstantPacer{Freq: maxRate, Per: time.Second}
 		err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)

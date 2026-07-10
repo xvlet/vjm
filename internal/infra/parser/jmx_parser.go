@@ -132,6 +132,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					currentThreadGroup.SteppingConfig = &domain.SteppingConfig{}
 				case "com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup":
 					currentThreadGroup.ConcurrencyConfig = &domain.ConcurrencyConfig{}
+				case "com.blazemeter.jmeter.threads.arrivals.ArrivalsThreadGroup":
+					currentThreadGroup.ArrivalsConfig = &domain.ArrivalsConfig{}
 				case "kg.apc.jmeter.threads.UltimateThreadGroup":
 					currentThreadGroup.UltimateConfig = &domain.UltimateConfig{}
 				}
@@ -721,22 +723,36 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "TargetLevel":
 					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
 						currentThreadGroup.ConcurrencyConfig.TargetLevel = val
+					} else if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
+						currentThreadGroup.ArrivalsConfig.TargetLevel = val
 					}
 				case "RampUp":
 					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
 						currentThreadGroup.ConcurrencyConfig.RampUp = val
+					} else if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
+						currentThreadGroup.ArrivalsConfig.RampUp = val
 					}
 				case "Steps":
 					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
 						currentThreadGroup.ConcurrencyConfig.Steps = val
+					} else if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
+						currentThreadGroup.ArrivalsConfig.Steps = val
 					}
 				case "Hold":
 					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
 						currentThreadGroup.ConcurrencyConfig.Hold = val
+					} else if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
+						currentThreadGroup.ArrivalsConfig.Hold = val
 					}
 				case "Unit":
 					if currentThreadGroup != nil && currentThreadGroup.ConcurrencyConfig != nil {
 						currentThreadGroup.ConcurrencyConfig.Unit = val
+					} else if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
+						currentThreadGroup.ArrivalsConfig.Unit = val
+					}
+				case "ConcurrencyLimit":
+					if currentThreadGroup != nil && currentThreadGroup.ArrivalsConfig != nil {
+						currentThreadGroup.ArrivalsConfig.ConcurrencyLimit = val
 					}
 				case "ThroughputController.maxThroughput":
 					if v, err := strconv.ParseFloat(val, 64); err == nil {

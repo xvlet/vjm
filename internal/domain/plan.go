@@ -158,6 +158,16 @@ type UltimateConfig struct {
 	Records []UltimateScheduleRecord
 }
 
+// ArrivalsConfig represents the properties of a bzm - Arrivals Thread Group.
+type ArrivalsConfig struct {
+	TargetLevel      string
+	RampUp           string
+	Steps            string
+	Hold             string
+	Unit             string
+	ConcurrencyLimit string
+}
+
 // ThreadGroup represents a JMeter Thread Group.
 // NumThreads, RampUp, and Duration are parsed from the JMX but not yet used by the runner.
 // These will be leveraged in a future enhancement to support stepped load (e.g. SteppingThreadGroup)
@@ -171,6 +181,7 @@ type ThreadGroup struct {
 	SteppingConfig    *SteppingConfig
 	ConcurrencyConfig *ConcurrencyConfig
 	UltimateConfig    *UltimateConfig
+	ArrivalsConfig    *ArrivalsConfig
 	OpenModelSchedule string // JMeter 5.5+ Open Model Thread Group DSL schedule
 	Timers            []*Timer
 	CSVDataSets       []*CSVDataSet

@@ -193,7 +193,7 @@ Options:
         테스트 지속 시간. 예: 30s, 1m, 5m. 기본값: 30s
 
   -w, -workers int
-        최대 동시 워커 수. 0이면 Vegeta 기본값 사용
+        최대 동시 워커 수. 0이면 10000을 기본값으로 사용
 
   -p string
         .properties 파일 경로. 여러 번 지정 가능
@@ -396,8 +396,8 @@ Error Set:
 - [x] **jp@gc - Stepping Thread Group**
 - [x] **Open Model Thread Group**
 - [x] **bzm - Concurrency Thread Group**
-- [ ] **jp@gc - Ultimate Thread Group**
-- [ ] **bzm - Arrivals Thread Group**
+- [x] **jp@gc - Ultimate Thread Group**
+- [x] **bzm - Arrivals Thread Group**
 - [ ] **bzm - Free-Form Arrivals Thread Group**
 - [ ] **setUp Thread Group**
 - [ ] **tearDown Thread Group**

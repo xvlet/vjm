@@ -12,6 +12,9 @@ func GetRunner(tg *domain.ThreadGroup) Runner {
 	if tg.SteppingConfig != nil {
 		return &SteppingRunner{}
 	}
+	if tg.ArrivalsConfig != nil {
+		return &ArrivalsRunner{}
+	}
 	if tg.ConcurrencyConfig != nil {
 		return &ConcurrencyRunner{}
 	}

@@ -194,7 +194,7 @@ Options:
         Test duration. e.g., 30s, 1m, 5m. Default: 30s
 
   -w, -workers int
-        Max concurrent workers. 0 means use Vegeta's default
+        Max concurrent workers. 0 means use default (10000)
 
   -p string
         Path to .properties file. Can be specified multiple times
@@ -397,8 +397,8 @@ Error Set:
 - [x] **jp@gc - Stepping Thread Group**
 - [x] **Open Model Thread Group**
 - [x] **bzm - Concurrency Thread Group**
-- [ ] **jp@gc - Ultimate Thread Group**
-- [ ] **bzm - Arrivals Thread Group**
+- [x] **jp@gc - Ultimate Thread Group**
+- [x] **bzm - Arrivals Thread Group**
 - [ ] **bzm - Free-Form Arrivals Thread Group**
 - [ ] **setUp Thread Group**
 - [ ] **tearDown Thread Group**

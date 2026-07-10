@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	vegeta "github.com/tsenart/vegeta/v12/lib"
@@ -43,6 +44,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(plan.ThreadGroups))
+	tgPaths := make([]string, len(plan.ThreadGroups))
 
 	for i, tg := range plan.ThreadGroups {
 		wg.Add(1)
@@ -69,6 +71,8 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 
 			if err := tgRunner.Run(ctx, subPlan, &subConfig, eval.Clone()); err != nil {
 				errCh <- err
+			} else {
+				tgPaths[idx] = subConfig.ResultBinPath
 			}
 		}(i, tg)
 	}
@@ -90,20 +94,25 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	defer func() { _ = out.Close() }()
 
 	enc := vegeta.NewEncoder(out)
-	for i := range plan.ThreadGroups {
-		partPath := fmt.Sprintf("%s.tg%d", config.ResultBinPath, i)
-		in, err := os.Open(partPath)
-		if err == nil {
-			dec := vegeta.NewDecoder(in)
-			var res vegeta.Result
-			for {
-				if err := dec.Decode(&res); err != nil {
-					break
-				}
-				_ = enc.Encode(&res)
+	for _, paths := range tgPaths {
+		for _, partPath := range strings.Split(paths, ",") {
+			partPath = strings.TrimSpace(partPath)
+			if partPath == "" {
+				continue
 			}
-			_ = in.Close()
-			_ = os.Remove(partPath)
+			in, err := os.Open(partPath)
+			if err == nil {
+				dec := vegeta.NewDecoder(in)
+				var res vegeta.Result
+				for {
+					if err := dec.Decode(&res); err != nil {
+						break
+					}
+					_ = enc.Encode(&res)
+				}
+				_ = in.Close()
+				_ = os.Remove(partPath)
+			}
 		}
 	}
 
