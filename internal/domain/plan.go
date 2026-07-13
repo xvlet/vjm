@@ -225,22 +225,24 @@ type Sampler struct {
 	Assertions        []Assertion
 
 	// Loop/While/Critical/ForEach Controller specific fields (Control Flow Markers)
-	IsControlFlow         bool   // True if this is a marker (not a real request)
-	ControlType           string // "LoopStart", "LoopEnd", "WhileStart", "WhileEnd", "CriticalStart", "CriticalEnd", "ForEachStart", "ForEachEnd"
-	LoopId                int    // Unique ID linking LoopStart and LoopEnd (also used for While, ForEach)
-	LoopCountExpr         string // Number of loops or "-1" for forever
-	LoopContinue          bool   // If continue_forever is true
-	LoopJumpIndex         int    // The index to jump back to (for LoopEnd/WhileEnd/ForEachEnd) or skip to (for WhileStart/ForEachStart)
-	BlockEndIndex         int    // The index of the corresponding End node
-	WhileCondition        string // Condition for WhileController
-	CriticalLockName      string // Lock name for CriticalSectionController
-	ForEachInputVal       string // ForEach Controller input variable
-	ForEachReturnVal      string // ForEach Controller return variable
-	ForEachUseSeparator   bool   // ForEach Controller whether to use "_" separator
-	ForEachStartIndex     string // ForEach Controller start index (exclusive)
-	ForEachEndIndex       string // ForEach Controller end index (inclusive)
-	InterleaveChildStarts []int
-	InterleaveChildEnds   []int
-	RandomChildStarts     []int
-	RandomChildEnds       []int
+	IsControlFlow          bool   // True if this is a marker (not a real request)
+	ControlType            string // "LoopStart", "LoopEnd", "WhileStart", "WhileEnd", "CriticalStart", "CriticalEnd", "ForEachStart", "ForEachEnd"
+	LoopId                 int    // Unique ID linking LoopStart and LoopEnd (also used for While, ForEach)
+	LoopCountExpr          string // Number of loops or "-1" for forever
+	LoopContinue           bool   // If continue_forever is true
+	LoopJumpIndex          int    // The index to jump back to (for LoopEnd/WhileEnd/ForEachEnd) or skip to (for WhileStart/ForEachStart)
+	BlockEndIndex          int    // The index of the corresponding End node
+	WhileCondition         string // Condition for WhileController
+	CriticalLockName       string // Lock name for CriticalSectionController
+	ForEachInputVal        string // ForEach Controller input variable
+	ForEachReturnVal       string // ForEach Controller return variable
+	ForEachUseSeparator    bool   // ForEach Controller whether to use "_" separator
+	ForEachStartIndex      string // ForEach Controller start index (exclusive)
+	ForEachEndIndex        string // ForEach Controller end index (inclusive)
+	InterleaveChildStarts  []int
+	InterleaveChildEnds    []int
+	RandomChildStarts      []int
+	RandomChildEnds        []int
+	RandomOrderChildStarts []int
+	RandomOrderChildEnds   []int
 }

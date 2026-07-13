@@ -155,29 +155,36 @@ var globalLocks sync.Map
 
 // Session represents a virtual user executing a Thread Group sequentially
 type Session struct {
-	ID             uint64
-	Variables      map[string]string
-	Evaluator      evaluator.Evaluator
-	Tg             *domain.ThreadGroup
-	Step           int // Current sampler index
-	Cache          map[string]*CacheEntry
-	LoopCounters   map[int]int
-	HeldLocks      map[string]*sync.Mutex
-	InterleaveJump map[int]int
+	ID               uint64
+	Variables        map[string]string
+	Evaluator        evaluator.Evaluator
+	Tg               *domain.ThreadGroup
+	Step             int // Current sampler index
+	Cache            map[string]*CacheEntry
+	LoopCounters     map[int]int
+	HeldLocks        map[string]*sync.Mutex
+	InterleaveJump   map[int]int
+	RandomOrderState map[int]*RandomOrderState
+}
+
+type RandomOrderState struct {
+	Order        []int
+	CurrentIndex int
 }
 
 func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
 	// Create a new evaluator for this session
 	return &Session{
-		ID:             id,
-		Variables:      make(map[string]string),
-		Evaluator:      globalEval.Clone(),
-		Tg:             tg,
-		Step:           0,
-		Cache:          make(map[string]*CacheEntry),
-		LoopCounters:   make(map[int]int),
-		HeldLocks:      make(map[string]*sync.Mutex),
-		InterleaveJump: make(map[int]int),
+		ID:               id,
+		Variables:        make(map[string]string),
+		Evaluator:        globalEval.Clone(),
+		Tg:               tg,
+		Step:             0,
+		Cache:            make(map[string]*CacheEntry),
+		LoopCounters:     make(map[int]int),
+		HeldLocks:        make(map[string]*sync.Mutex),
+		InterleaveJump:   make(map[int]int),
+		RandomOrderState: make(map[int]*RandomOrderState),
 	}
 }
 
@@ -805,6 +812,43 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									step = sampler.BlockEndIndex
 								}
 							case "RandomEnd":
+								// Just fall through
+							case "RandomOrderStart":
+								state := session.RandomOrderState[sampler.LoopId]
+								if state == nil || state.CurrentIndex >= len(sampler.RandomOrderChildStarts) {
+									order := make([]int, len(sampler.RandomOrderChildStarts))
+									for j := range order {
+										order[j] = j
+									}
+									rand.Shuffle(len(order), func(i, j int) {
+										order[i], order[j] = order[j], order[i]
+									})
+									state = &RandomOrderState{
+										Order:        order,
+										CurrentIndex: 0,
+									}
+									session.RandomOrderState[sampler.LoopId] = state
+								}
+								if state.CurrentIndex < len(sampler.RandomOrderChildStarts) {
+									childIndex := state.Order[state.CurrentIndex]
+									startStep := sampler.RandomOrderChildStarts[childIndex]
+									endStep := sampler.RandomOrderChildEnds[childIndex]
+
+									state.CurrentIndex++
+
+									if state.CurrentIndex < len(sampler.RandomOrderChildStarts) {
+										// More children left, jump back to RandomOrderStart
+										session.InterleaveJump[endStep+1] = step
+									} else {
+										// Last child, jump out of controller
+										session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+									}
+
+									step = startStep - 1
+								} else {
+									step = sampler.BlockEndIndex
+								}
+							case "RandomOrderEnd":
 								// Just fall through
 							}
 							continue

@@ -62,15 +62,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	transactionParentMap := make(map[int]bool)
 
 	type LoopContext struct {
-		Depth        int
-		LoopId       int
-		StartIndex   int
-		IsWhile      bool
-		IsCritical   bool
-		IsForEach    bool
-		IsInterleave bool
-		IsOnceOnly   bool
-		IsRandom     bool
+		Depth         int
+		LoopId        int
+		StartIndex    int
+		IsWhile       bool
+		IsCritical    bool
+		IsForEach     bool
+		IsInterleave  bool
+		IsOnceOnly    bool
+		IsRandom      bool
+		IsRandomOrder bool
 	}
 	var loopStack []LoopContext
 	var pendingLoopId int
@@ -89,6 +90,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingInterleaveId int
 	var pendingOnceOnlyId int
 	var pendingRandomId int
+	var pendingRandomOrderId int
 	var nextLoopId = 1
 	var pendingIncludePath string
 
@@ -151,6 +153,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				nextLoopId++
 			case "RandomController":
 				pendingRandomId = nextLoopId
+				nextLoopId++
+			case "RandomOrderController":
+				pendingRandomOrderId = nextLoopId
 				nextLoopId++
 			}
 			nameAttr = ""
@@ -332,6 +337,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						LoopId:        pendingRandomId,
 					})
 					pendingRandomId = 0
+				}
+				if pendingRandomOrderId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:         hashTreeDepth,
+						LoopId:        pendingRandomOrderId,
+						StartIndex:    startIndex,
+						IsRandomOrder: true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow: true,
+						ControlType:   "RandomOrderStart",
+						LoopId:        pendingRandomOrderId,
+					})
+					pendingRandomOrderId = 0
 				}
 			}
 
@@ -634,6 +654,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							endType = "OnceOnlyEnd"
 						} else if top.IsRandom {
 							endType = "RandomEnd"
+						} else if top.IsRandomOrder {
+							endType = "RandomOrderEnd"
 						}
 
 						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
@@ -1348,6 +1370,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				s.RandomChildStarts = childStarts
 				s.RandomChildEnds = childEnds
+			case "RandomOrderStart":
+				childStarts := []int{}
+				childEnds := []int{}
+				for j := i + 1; j < s.BlockEndIndex; {
+					childStarts = append(childStarts, j)
+
+					endIdx := j
+					if tg.Samplers[j].IsControlFlow && tg.Samplers[j].BlockEndIndex > 0 {
+						endIdx = tg.Samplers[j].BlockEndIndex
+					}
+					childEnds = append(childEnds, endIdx)
+					j = endIdx + 1
+				}
+				s.RandomOrderChildStarts = childStarts
+				s.RandomOrderChildEnds = childEnds
 			}
 		}
 	}

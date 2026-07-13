@@ -413,7 +413,7 @@ Error Set:
 - [x] **Interleave Controller**
 - [x] **Once Only Controller**
 - [x] **Random Controller**
-- [ ] **Random Order Controller**
+- [x] **Random Order Controller**
 - [ ] **Recording Controller**
 - [ ] **Runtime Controller**
 - [ ] **Simple Controller**
