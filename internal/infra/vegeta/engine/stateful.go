@@ -155,27 +155,29 @@ var globalLocks sync.Map
 
 // Session represents a virtual user executing a Thread Group sequentially
 type Session struct {
-	ID           uint64
-	Variables    map[string]string
-	Evaluator    evaluator.Evaluator
-	Tg           *domain.ThreadGroup
-	Step         int // Current sampler index
-	Cache        map[string]*CacheEntry
-	LoopCounters map[int]int
-	HeldLocks    map[string]*sync.Mutex
+	ID             uint64
+	Variables      map[string]string
+	Evaluator      evaluator.Evaluator
+	Tg             *domain.ThreadGroup
+	Step           int // Current sampler index
+	Cache          map[string]*CacheEntry
+	LoopCounters   map[int]int
+	HeldLocks      map[string]*sync.Mutex
+	InterleaveJump map[int]int
 }
 
 func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
 	// Create a new evaluator for this session
 	return &Session{
-		ID:           id,
-		Variables:    make(map[string]string),
-		Evaluator:    globalEval.Clone(),
-		Tg:           tg,
-		Step:         0,
-		Cache:        make(map[string]*CacheEntry),
-		LoopCounters: make(map[int]int),
-		HeldLocks:    make(map[string]*sync.Mutex),
+		ID:             id,
+		Variables:      make(map[string]string),
+		Evaluator:      globalEval.Clone(),
+		Tg:             tg,
+		Step:           0,
+		Cache:          make(map[string]*CacheEntry),
+		LoopCounters:   make(map[int]int),
+		HeldLocks:      make(map[string]*sync.Mutex),
+		InterleaveJump: make(map[int]int),
 	}
 }
 
@@ -646,6 +648,10 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 					// Execute samplers sequentially
 					for step := 0; step < len(tg.Samplers); step++ {
+						if jump, ok := session.InterleaveJump[step]; ok {
+							delete(session.InterleaveJump, step)
+							step = jump
+						}
 						sampler := tg.Samplers[step]
 
 						if sampler.IsControlFlow {
@@ -757,6 +763,32 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							case "ForEachEnd":
 								session.LoopCounters[sampler.LoopId]++
 								step = sampler.LoopJumpIndex - 1 // jump back to ForEachStart
+							case "InterleaveStart":
+								session.LoopCounters[sampler.LoopId]++
+								if len(sampler.InterleaveChildStarts) > 0 {
+									childIndex := (session.LoopCounters[sampler.LoopId] - 1) % len(sampler.InterleaveChildStarts)
+									startStep := sampler.InterleaveChildStarts[childIndex]
+									endStep := sampler.InterleaveChildEnds[childIndex]
+
+									// When step reaches endStep + 1, jump to InterleaveEnd
+									session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+
+									// jump to the child
+									step = startStep - 1
+								} else {
+									// No children, just skip to end
+									step = sampler.BlockEndIndex
+								}
+							case "InterleaveEnd":
+								// Just fall through
+							case "OnceOnlyStart":
+								if session.LoopCounters[sampler.LoopId] > 0 {
+									step = sampler.BlockEndIndex
+								} else {
+									session.LoopCounters[sampler.LoopId]++
+								}
+							case "OnceOnlyEnd":
+								// Just fall through
 							}
 							continue
 						}

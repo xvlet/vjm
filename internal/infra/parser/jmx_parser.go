@@ -62,12 +62,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	transactionParentMap := make(map[int]bool)
 
 	type LoopContext struct {
-		Depth      int
-		LoopId     int
-		StartIndex int
-		IsWhile    bool
-		IsCritical bool
-		IsForEach  bool
+		Depth        int
+		LoopId       int
+		StartIndex   int
+		IsWhile      bool
+		IsCritical   bool
+		IsForEach    bool
+		IsInterleave bool
+		IsOnceOnly   bool
 	}
 	var loopStack []LoopContext
 	var pendingLoopId int
@@ -83,6 +85,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingForEachUseSeparator bool
 	var pendingForEachStartIndex string
 	var pendingForEachEndIndex string
+	var pendingInterleaveId int
+	var pendingOnceOnlyId int
 	var nextLoopId = 1
 	var pendingIncludePath string
 
@@ -136,6 +140,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 		switch se := t.(type) {
 		case xml.StartElement:
 			currentTag = se.Name.Local
+			switch currentTag {
+			case "InterleaveControl":
+				pendingInterleaveId = nextLoopId
+				nextLoopId++
+			case "OnceOnlyController":
+				pendingOnceOnlyId = nextLoopId
+				nextLoopId++
+			}
 			nameAttr = ""
 			testNameAttr := ""
 			enabledAttr := "true"
@@ -270,6 +282,36 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					pendingForEachUseSeparator = true
 					pendingForEachStartIndex = ""
 					pendingForEachEndIndex = ""
+				}
+				if pendingInterleaveId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:        hashTreeDepth,
+						LoopId:       pendingInterleaveId,
+						StartIndex:   startIndex,
+						IsInterleave: true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow: true,
+						ControlType:   "InterleaveStart",
+						LoopId:        pendingInterleaveId,
+					})
+					pendingInterleaveId = 0
+				}
+				if pendingOnceOnlyId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:      hashTreeDepth,
+						LoopId:     pendingOnceOnlyId,
+						StartIndex: startIndex,
+						IsOnceOnly: true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow: true,
+						ControlType:   "OnceOnlyStart",
+						LoopId:        pendingOnceOnlyId,
+					})
+					pendingOnceOnlyId = 0
 				}
 			}
 
@@ -566,6 +608,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							endType = "CriticalEnd"
 						} else if top.IsForEach {
 							endType = "ForEachEnd"
+						} else if top.IsInterleave {
+							endType = "InterleaveEnd"
+						} else if top.IsOnceOnly {
+							endType = "OnceOnlyEnd"
 						}
 
 						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
@@ -585,6 +631,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							// Update ForEachStart's JumpIndex to point to the ForEachEnd
 							currentThreadGroup.Samplers[top.StartIndex].LoopJumpIndex = len(currentThreadGroup.Samplers) - 1
 						}
+
+						// Always update BlockEndIndex on the Start node
+						currentThreadGroup.Samplers[top.StartIndex].BlockEndIndex = len(currentThreadGroup.Samplers) - 1
 					}
 				}
 
@@ -1240,6 +1289,27 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						}
 					}
 				}
+			}
+		}
+	}
+
+	for _, tg := range plan.ThreadGroups {
+		for i, s := range tg.Samplers {
+			if s.ControlType == "InterleaveStart" {
+				childStarts := []int{}
+				childEnds := []int{}
+				for j := i + 1; j < s.BlockEndIndex; {
+					childStarts = append(childStarts, j)
+
+					endIdx := j
+					if tg.Samplers[j].IsControlFlow && tg.Samplers[j].BlockEndIndex > 0 {
+						endIdx = tg.Samplers[j].BlockEndIndex
+					}
+					childEnds = append(childEnds, endIdx)
+					j = endIdx + 1
+				}
+				s.InterleaveChildStarts = childStarts
+				s.InterleaveChildEnds = childEnds
 			}
 		}
 	}

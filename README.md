@@ -410,9 +410,9 @@ Error Set:
 - [x] **While Controller**
 - [x] **Critical Section Controller**
 - [x] **ForEach Controller**
-- [ ] **Include Controller**
-- [ ] **Interleave Controller**
-- [ ] **Once Only Controller**
+- [x] **Include Controller**
+- [x] **Interleave Controller**
+- [x] **Once Only Controller**
 - [ ] **Random Controller**
 - [ ] **Random Order Controller**
 - [ ] **Recording Controller**
