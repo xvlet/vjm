@@ -224,12 +224,13 @@ type Sampler struct {
 	Extractors        []Extractor
 	Assertions        []Assertion
 
-	// Loop/While Controller specific fields (Control Flow Markers)
-	IsControlFlow  bool   // True if this is a marker (not a real request)
-	ControlType    string // "LoopStart", "LoopEnd", "WhileStart", "WhileEnd"
-	LoopId         int    // Unique ID linking LoopStart and LoopEnd (also used for While)
-	LoopCountExpr  string // Number of loops or "-1" for forever
-	LoopContinue   bool   // If continue_forever is true
-	WhileCondition string // Condition for WhileController
-	LoopJumpIndex  int    // The index to jump back to (for LoopEnd/WhileEnd) or skip to (for WhileStart)
+	// Loop/While/Critical Controller specific fields (Control Flow Markers)
+	IsControlFlow    bool   // True if this is a marker (not a real request)
+	ControlType      string // "LoopStart", "LoopEnd", "WhileStart", "WhileEnd", "CriticalStart", "CriticalEnd"
+	LoopId           int    // Unique ID linking LoopStart and LoopEnd (also used for While)
+	LoopCountExpr    string // Number of loops or "-1" for forever
+	LoopContinue     bool   // If continue_forever is true
+	WhileCondition   string // Condition for WhileController
+	CriticalLockName string // Lock name for CriticalSectionController
+	LoopJumpIndex    int    // The index to jump back to (for LoopEnd/WhileEnd) or skip to (for WhileStart)
 }

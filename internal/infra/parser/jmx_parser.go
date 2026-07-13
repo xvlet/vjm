@@ -65,6 +65,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 		LoopId     int
 		StartIndex int
 		IsWhile    bool
+		IsCritical bool
 	}
 	var loopStack []LoopContext
 	var pendingLoopId int
@@ -72,6 +73,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingLoopContinue bool
 	var pendingWhileId int
 	var pendingWhileCondition string
+	var pendingCriticalId int
+	var pendingCriticalLockName string
 	var nextLoopId = 1
 
 	// Counters and tracking arrays bool
@@ -194,6 +197,23 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					pendingWhileId = 0
 					pendingWhileCondition = ""
 				}
+				if pendingCriticalId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:      hashTreeDepth,
+						LoopId:     pendingCriticalId,
+						StartIndex: startIndex,
+						IsCritical: true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow:    true,
+						ControlType:      "CriticalStart",
+						LoopId:           pendingCriticalId,
+						CriticalLockName: pendingCriticalLockName,
+					})
+					pendingCriticalId = 0
+					pendingCriticalLockName = ""
+				}
 			}
 
 			if strings.HasSuffix(currentTag, "ThreadGroup") {
@@ -299,6 +319,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				nextLoopId++
 			} else if currentTag == "WhileController" {
 				pendingWhileId = nextLoopId
+				nextLoopId++
+			} else if currentTag == "CriticalSectionController" {
+				pendingCriticalId = nextLoopId
 				nextLoopId++
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
@@ -478,6 +501,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						endType := "LoopEnd"
 						if top.IsWhile {
 							endType = "WhileEnd"
+						} else if top.IsCritical {
+							endType = "CriticalEnd"
 						}
 
 						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
@@ -490,6 +515,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						if top.IsWhile {
 							// Update WhileStart's JumpIndex to point to the WhileEnd
 							currentThreadGroup.Samplers[top.StartIndex].LoopJumpIndex = len(currentThreadGroup.Samplers) - 1
+						} else if top.IsCritical {
+							// CriticalEnd needs the lock name, we copy it from CriticalStart
+							currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1].CriticalLockName = currentThreadGroup.Samplers[top.StartIndex].CriticalLockName
 						}
 					}
 				}
@@ -805,6 +833,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "WhileController.condition":
 					if currentTag == "WhileController" {
 						pendingWhileCondition = val
+					}
+				case "CriticalSectionController.lockName":
+					if currentTag == "CriticalSectionController" {
+						pendingCriticalLockName = val
 					}
 				case "IfController.condition":
 					pendingIfCondition = val

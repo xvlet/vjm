@@ -408,7 +408,7 @@ Error Set:
 - [x] **Transaction Controller**
 - [x] **Loop Controller**
 - [x] **While Controller**
-- [ ] **Critical Section Controller**
+- [x] **Critical Section Controller**
 - [ ] **ForEach Controller**
 - [ ] **Include Controller**
 - [ ] **Interleave Controller**

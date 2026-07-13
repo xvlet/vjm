@@ -151,6 +151,8 @@ var bufferPool = sync.Pool{
 	},
 }
 
+var globalLocks sync.Map
+
 // Session represents a virtual user executing a Thread Group sequentially
 type Session struct {
 	ID           uint64
@@ -160,6 +162,7 @@ type Session struct {
 	Step         int // Current sampler index
 	Cache        map[string]*CacheEntry
 	LoopCounters map[int]int
+	HeldLocks    map[string]*sync.Mutex
 }
 
 func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
@@ -173,6 +176,7 @@ func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluato
 		Step:         0,
 		Cache:        make(map[string]*CacheEntry),
 		LoopCounters: make(map[int]int),
+		HeldLocks:    make(map[string]*sync.Mutex),
 	}
 }
 
@@ -538,6 +542,14 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				allRVs = append(allRVs, sharedRandomVariables...)
 				allRVs = append(allRVs, localRandomVariables...)
 
+				// Ensure any held locks are released when worker exits
+				defer func() {
+					for name, mu := range session.HeldLocks {
+						mu.Unlock()
+						delete(session.HeldLocks, name)
+					}
+				}()
+
 				for {
 					if ctx.Err() != nil {
 						return
@@ -675,6 +687,27 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							case "WhileEnd":
 								// Jump back to WhileStart so condition is evaluated again
 								step = sampler.LoopJumpIndex - 1
+							case "CriticalStart":
+								lockName := session.Evaluator.Evaluate(sampler.CriticalLockName)
+								if lockName == "" {
+									lockName = "global_lock"
+								}
+								// If we don't already hold it
+								if _, held := session.HeldLocks[lockName]; !held {
+									muIntf, _ := globalLocks.LoadOrStore(lockName, &sync.Mutex{})
+									mu := muIntf.(*sync.Mutex)
+									mu.Lock()
+									session.HeldLocks[lockName] = mu
+								}
+							case "CriticalEnd":
+								lockName := session.Evaluator.Evaluate(sampler.CriticalLockName)
+								if lockName == "" {
+									lockName = "global_lock"
+								}
+								if mu, held := session.HeldLocks[lockName]; held {
+									mu.Unlock()
+									delete(session.HeldLocks, lockName)
+								}
 							}
 							continue
 						}
