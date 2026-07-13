@@ -43,7 +43,7 @@
             <stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
             <stringProp name="HTTPSampler.port">58080</stringProp>
             <stringProp name="HTTPSampler.protocol">http</stringProp>
-            <stringProp name="HTTPSampler.path">/test/setup</stringProp>
+            <stringProp name="HTTPSampler.path">/test/controller/if</stringProp>
             <stringProp name="HTTPSampler.method">GET</stringProp>
           </HTTPSamplerProxy>
           <hashTree/>
@@ -59,7 +59,7 @@
             <stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
             <stringProp name="HTTPSampler.port">58080</stringProp>
             <stringProp name="HTTPSampler.protocol">http</stringProp>
-            <stringProp name="HTTPSampler.path">/test/main</stringProp>
+            <stringProp name="HTTPSampler.path">/test/controller/if</stringProp>
             <stringProp name="HTTPSampler.method">GET</stringProp>
           </HTTPSamplerProxy>
           <hashTree/>
@@ -75,7 +75,7 @@
             <stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
             <stringProp name="HTTPSampler.port">58080</stringProp>
             <stringProp name="HTTPSampler.protocol">http</stringProp>
-            <stringProp name="HTTPSampler.path">/test/teardown</stringProp>
+            <stringProp name="HTTPSampler.path">/test/controller/if</stringProp>
             <stringProp name="HTTPSampler.method">GET</stringProp>
           </HTTPSamplerProxy>
           <hashTree/>
@@ -89,7 +89,7 @@
               <stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
               <stringProp name="HTTPSampler.port">58080</stringProp>
               <stringProp name="HTTPSampler.protocol">http</stringProp>
-              <stringProp name="HTTPSampler.path">/test/freeform</stringProp>
+              <stringProp name="HTTPSampler.path">/test/controller/if</stringProp>
               <stringProp name="HTTPSampler.method">GET</stringProp>
             </HTTPSamplerProxy>
             <hashTree/>

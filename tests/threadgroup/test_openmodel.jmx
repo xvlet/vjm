@@ -26,7 +26,7 @@
           <stringProp name="HTTPSampler.port">58080</stringProp>
           <stringProp name="HTTPSampler.protocol">http</stringProp>
           <stringProp name="HTTPSampler.contentEncoding"></stringProp>
-          <stringProp name="HTTPSampler.path">/test/openmodel/test1</stringProp>
+          <stringProp name="HTTPSampler.path">/test/threadgroup/openmodel</stringProp>
           <stringProp name="HTTPSampler.method">GET</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>

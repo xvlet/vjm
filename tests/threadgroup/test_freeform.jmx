@@ -41,7 +41,7 @@
                     <stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
                     <stringProp name="HTTPSampler.port">58080</stringProp>
                     <stringProp name="HTTPSampler.protocol">http</stringProp>
-                    <stringProp name="HTTPSampler.path">/test/freeform</stringProp>
+                    <stringProp name="HTTPSampler.path">/test/threadgroup/freeform</stringProp>
                     <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
                     <stringProp name="HTTPSampler.method">GET</stringProp>
                     <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
