@@ -115,7 +115,10 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 				msg = res.Error
 			}
 
-			label := "HTTP_Request"
+			label := res.Attack
+			if label == "" {
+				label = "HTTP_Request"
+			}
 
 			_ = writer.Write([]string{
 				strconv.FormatInt(ts, 10),

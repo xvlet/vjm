@@ -215,10 +215,12 @@ type ThreadGroup struct {
 
 // Sampler represents a JMeter HTTP Sampler
 type Sampler struct {
-	Name        string
-	Request     *RequestTemplate
-	Weight      float64
-	IfCondition string // JEXL3 or Groovy boolean condition string
-	Extractors  []Extractor
-	Assertions  []Assertion
+	Name              string
+	Request           *RequestTemplate
+	Weight            float64
+	IfCondition       string // JEXL3 or Groovy boolean condition string
+	TransactionName   string // Name of the Transaction Controller
+	TransactionParent bool   // Generate parent sample
+	Extractors        []Extractor
+	Assertions        []Assertion
 }

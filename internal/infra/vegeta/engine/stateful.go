@@ -726,8 +726,13 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						resp, err := sessionClient.Do(req)
 						elapsed := time.Since(start)
 
+						attackName := sampler.Name
+						if sampler.TransactionName != "" && sampler.TransactionParent {
+							attackName = sampler.TransactionName
+						}
+
 						res := &vegeta.Result{
-							Attack:    "Stateful",
+							Attack:    attackName,
 							Seq:       uint64(step),
 							Timestamp: start,
 							Latency:   elapsed,

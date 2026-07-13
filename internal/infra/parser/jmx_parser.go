@@ -55,6 +55,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingIfCondition string
 	ifConditionMap := make(map[int]string)
 
+	var pendingTransactionName string
+	var pendingTransactionParent bool
+	transactionNameMap := make(map[int]string)
+	transactionParentMap := make(map[int]bool)
+
+	// Counters and tracking arrays bool
 	var inFloatProperty bool
 	var floatPropName string
 	var floatPropNameState bool
@@ -117,7 +123,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					enabledAttr = attr.Value
 				}
 			}
-			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController") {
+			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController") {
 				nameAttr = testNameAttr
 			}
 
@@ -131,6 +137,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if pendingIfCondition != "" {
 					ifConditionMap[hashTreeDepth] = pendingIfCondition
 					pendingIfCondition = ""
+				}
+				if pendingTransactionName != "" {
+					transactionNameMap[hashTreeDepth] = pendingTransactionName
+					transactionParentMap[hashTreeDepth] = pendingTransactionParent
+					pendingTransactionName = ""
+					pendingTransactionParent = false
 				}
 			}
 
@@ -173,15 +185,26 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					activeIfCondition = strings.Join(conditions, " && ")
 				}
 
+				activeTransactionName := ""
+				activeTransactionParent := false
+				for d := 1; d <= hashTreeDepth; d++ {
+					if name, ok := transactionNameMap[d]; ok && name != "" {
+						activeTransactionName = name
+						activeTransactionParent = transactionParentMap[d]
+					}
+				}
+
 				currentReq = &domain.RequestTemplate{
 					Headers: make(map[string]string),
 				}
 				if currentThreadGroup != nil {
 					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
-						Name:        nameAttr,
-						Request:     currentReq,
-						Weight:      activeWeight,
-						IfCondition: activeIfCondition,
+						Name:              nameAttr,
+						Request:           currentReq,
+						Weight:            activeWeight,
+						IfCondition:       activeIfCondition,
+						TransactionName:   activeTransactionName,
+						TransactionParent: activeTransactionParent,
 					})
 				}
 				// Reset sampler-specific URL parts
@@ -217,6 +240,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					} else if inFreeFormData {
 						inFreeFormRow = true
 						freeFormRowVals = []string{}
+					} else if currentTag == "TransactionController" {
+						pendingTransactionName = nameAttr
 					}
 				}
 			} else if currentTag == "FloatProperty" {
@@ -390,6 +415,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			if se.Name.Local == "hashTree" {
 				delete(weightMap, hashTreeDepth)
 				delete(ifConditionMap, hashTreeDepth)
+				delete(transactionNameMap, hashTreeDepth)
+				delete(transactionParentMap, hashTreeDepth)
 				hashTreeDepth--
 				activeWeight = 1.0
 				for d := hashTreeDepth; d >= 0; d-- {
@@ -689,6 +716,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				switch nameAttr {
 				case "IfController.condition":
 					pendingIfCondition = val
+				case "TransactionController.parent":
+					pendingTransactionParent = (val == "true")
 				case "HTTPSampler.domain":
 					if inConfigTestElement {
 						defDomain = val
