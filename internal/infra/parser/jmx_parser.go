@@ -94,6 +94,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingRandomOrderId int
 	var pendingRuntimeId int
 	var pendingRuntimeSeconds string
+	var pendingSwitchId int
+	var pendingSwitchValue string
+	var pendingModuleId int
+	var inModuleNodePath bool
+	var pendingModuleTargetNodePath []string
 	var nextLoopId = 1
 	var pendingIncludePath string
 
@@ -174,7 +179,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					enabledAttr = attr.Value
 				}
 			}
-			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController") {
+			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController" || currentTag == "TestFragmentController") {
 				nameAttr = testNameAttr
 			}
 
@@ -271,6 +276,35 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					pendingRuntimeId = 0
 					pendingRuntimeSeconds = ""
 				}
+
+				if pendingModuleId > 0 && currentThreadGroup != nil {
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow:        true,
+						ControlType:          "ModuleCall",
+						LoopId:               pendingModuleId,
+						ModuleTargetNodePath: pendingModuleTargetNodePath,
+					})
+					pendingModuleId = 0
+					pendingModuleTargetNodePath = nil
+				}
+
+				if pendingSwitchId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:      hashTreeDepth,
+						LoopId:     pendingSwitchId,
+						StartIndex: startIndex,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow:   true,
+						ControlType:     "SwitchStart",
+						LoopId:          pendingSwitchId,
+						SwitchValueExpr: pendingSwitchValue,
+					})
+					pendingSwitchId = 0
+					pendingSwitchValue = ""
+				}
+
 				if pendingCriticalId > 0 && currentThreadGroup != nil {
 					startIndex := len(currentThreadGroup.Samplers)
 					loopStack = append(loopStack, LoopContext{
@@ -382,6 +416,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					actionType = "setup"
 				case "PostThreadGroup":
 					actionType = "teardown"
+				case "TestFragmentController":
+					actionType = "fragment"
 				}
 
 				currentThreadGroup = &domain.ThreadGroup{
@@ -462,6 +498,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					inUltimateData = true
 				case "arrivals_schedule":
 					inFreeFormData = true
+				case "ModuleController.node_path":
+					inModuleNodePath = true
 				default:
 					if inUltimateData {
 						inUltimateRow = true
@@ -495,6 +533,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if currentTag == "RunTime" {
 				pendingRuntimeId = nextLoopId
 				nextLoopId++
+			} else if currentTag == "ModuleController" {
+				pendingModuleId = nextLoopId
+				nextLoopId++
+				pendingModuleTargetNodePath = []string{}
+			} else if currentTag == "SwitchController" {
+				pendingSwitchId = nextLoopId
+				nextLoopId++
+			} else if currentTag == "OnceOnlyController" {
+				inFloatProperty = true
+				floatPropName = ""
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
 				floatPropName = ""
@@ -866,6 +914,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if se.Name.Local == "collectionProp" {
 				inDNSServers = false
 				inDNSHosts = false
+				userParamState = ""
+				inUltimateData = false
+				inUltimateRow = false
+				inFreeFormData = false
+				inFreeFormRow = false
+				inModuleNodePath = false
 				if inUltimateRow {
 					inUltimateRow = false
 					if currentThreadGroup != nil && currentThreadGroup.UltimateConfig != nil && len(ultimateRowVals) >= 5 {
@@ -897,6 +951,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			val := strings.TrimSpace(string(se))
 			if val == "" {
 				continue
+			}
+
+			if inDNSServers {
+				if currentDNSCacheManager != nil {
+					currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
+				}
+			} else if inModuleNodePath && currentTag == "stringProp" {
+				pendingModuleTargetNodePath = append(pendingModuleTargetNodePath, val)
 			}
 
 			switch currentTag {
@@ -1157,6 +1219,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if v, err := strconv.ParseFloat(val, 64); err == nil {
 						pendingWeight = v
 					}
+				case "SwitchController.value":
+					pendingSwitchValue = val
 				case "IncludeController.includepath":
 					pendingIncludePath = val
 				case "Argument.name":
@@ -1421,6 +1485,24 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				s.RandomOrderChildStarts = childStarts
 				s.RandomOrderChildEnds = childEnds
+			case "SwitchStart":
+				childStarts := []int{}
+				childEnds := []int{}
+				childNames := []string{}
+				for j := i + 1; j < s.BlockEndIndex; {
+					childStarts = append(childStarts, j)
+					childNames = append(childNames, tg.Samplers[j].Name)
+
+					endIdx := j
+					if tg.Samplers[j].IsControlFlow && tg.Samplers[j].BlockEndIndex > 0 {
+						endIdx = tg.Samplers[j].BlockEndIndex
+					}
+					childEnds = append(childEnds, endIdx)
+					j = endIdx + 1
+				}
+				s.SwitchChildStarts = childStarts
+				s.SwitchChildEnds = childEnds
+				s.SwitchChildNames = childNames
 			}
 		}
 	}

@@ -419,8 +419,8 @@ Error Set:
 - [x] **Runtime Controller**
 - [x] **Simple Controller**
 - [x] **Throughput Controller**
-- [ ] **Module Controller**
-- [ ] **Switch Controller**
+- [x] **Module Controller**
+- [x] **Switch Controller**
 
 ### Config Elements
 - [x] **HTTP Header Manager**

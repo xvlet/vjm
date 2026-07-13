@@ -55,6 +55,16 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 
 		standardAttacker := vegeta.NewAttacker(atkOpts...)
 
+		var executableTgs []*domain.ThreadGroup
+		for _, tg := range plan.ThreadGroups {
+			if tg.ActionType != "fragment" {
+				executableTgs = append(executableTgs, tg)
+			}
+		}
+		if len(executableTgs) == 0 {
+			return nil
+		}
+
 		// Setup targeter
 		var tgCounter uint64
 		// Pre-calculate cumulative weights for faster selection
@@ -62,10 +72,10 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			sampler    *domain.Sampler
 			cumulative float64
 		}
-		tgDistributions := make([][]samplerDist, len(plan.ThreadGroups))
-		tgTotalWeights := make([]float64, len(plan.ThreadGroups))
+		tgDistributions := make([][]samplerDist, len(executableTgs))
+		tgTotalWeights := make([]float64, len(executableTgs))
 
-		for i, tg := range plan.ThreadGroups {
+		for i, tg := range executableTgs {
 			var current float64
 			dist := make([]samplerDist, 0, len(tg.Samplers))
 			for _, s := range tg.Samplers {
@@ -90,9 +100,9 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			}
 
 			idx := atomic.AddUint64(&tgCounter, 1) - 1
-			tgIdx := idx % uint64(len(plan.ThreadGroups))
+			tgIdx := idx % uint64(len(executableTgs))
 
-			tg := plan.ThreadGroups[tgIdx]
+			tg := executableTgs[tgIdx]
 			dist := tgDistributions[tgIdx]
 
 			var sampler *domain.Sampler

@@ -45,6 +45,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	var setupGroups []*domain.ThreadGroup
 	var mainGroups []*domain.ThreadGroup
 	var teardownGroups []*domain.ThreadGroup
+	var fragments []*domain.ThreadGroup
 
 	for _, tg := range plan.ThreadGroups {
 		switch tg.ActionType {
@@ -52,6 +53,8 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 			setupGroups = append(setupGroups, tg)
 		case "teardown":
 			teardownGroups = append(teardownGroups, tg)
+		case "fragment":
+			fragments = append(fragments, tg)
 		default:
 			mainGroups = append(mainGroups, tg)
 		}
@@ -75,17 +78,23 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 			go func(idx int, threadGrp *domain.ThreadGroup) {
 				defer wg.Done()
 
+				tgs := []*domain.ThreadGroup{threadGrp}
+				tgs = append(tgs, fragments...)
+
 				subPlan := &domain.TestPlan{
 					Name:                 plan.Name,
-					ThreadGroups:         []*domain.ThreadGroup{threadGrp},
+					UserDefinedVariables: plan.UserDefinedVariables,
 					CSVDataSets:          plan.CSVDataSets,
+					ResultCollectors:     plan.ResultCollectors,
+					BackendListeners:     plan.BackendListeners,
 					CookieManager:        plan.CookieManager,
 					CacheManager:         plan.CacheManager,
 					DNSCacheManager:      plan.DNSCacheManager,
 					AuthManager:          plan.AuthManager,
 					Counters:             plan.Counters,
 					RandomVariables:      plan.RandomVariables,
-					UserDefinedVariables: plan.UserDefinedVariables,
+					ThroughputTimers:     plan.ThroughputTimers,
+					ThreadGroups:         tgs,
 				}
 
 				subConfig := *config

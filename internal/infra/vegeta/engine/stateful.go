@@ -166,6 +166,13 @@ type Session struct {
 	InterleaveJump   map[int]int
 	RandomOrderState map[int]*RandomOrderState
 	RuntimeDeadlines map[int]time.Time
+	CallStack        []CallFrame
+	Plan             *domain.TestPlan
+}
+
+type CallFrame struct {
+	Tg   *domain.ThreadGroup
+	Step int
 }
 
 type RandomOrderState struct {
@@ -173,7 +180,7 @@ type RandomOrderState struct {
 	CurrentIndex int
 }
 
-func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
+func NewSession(id uint64, plan *domain.TestPlan, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
 	// Create a new evaluator for this session
 	return &Session{
 		ID:               id,
@@ -187,6 +194,7 @@ func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluato
 		InterleaveJump:   make(map[int]int),
 		RandomOrderState: make(map[int]*RandomOrderState),
 		RuntimeDeadlines: make(map[int]time.Time),
+		Plan:             plan,
 	}
 }
 
@@ -442,7 +450,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				}
 				tgIdx := int(sessionID) % len(plan.ThreadGroups)
 				tg := plan.ThreadGroups[tgIdx]
-				session := NewSession(sessionID, tg, globalEval.Clone())
+				session := NewSession(sessionID, plan, tg, globalEval.Clone())
 
 				var localRandomVariables []*RandomVariableRuntime
 				for _, rv := range plan.RandomVariables {
@@ -656,12 +664,24 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					}
 
 					// Execute samplers sequentially
-					for step := 0; step < len(tg.Samplers); step++ {
+					step := 0
+					for ; ; step++ {
+						if step >= len(session.Tg.Samplers) {
+							if len(session.CallStack) > 0 {
+								frame := session.CallStack[len(session.CallStack)-1]
+								session.CallStack = session.CallStack[:len(session.CallStack)-1]
+								session.Tg = frame.Tg
+								step = frame.Step
+								continue
+							}
+							break
+						}
+
 						if jump, ok := session.InterleaveJump[step]; ok {
 							delete(session.InterleaveJump, step)
 							step = jump
 						}
-						sampler := tg.Samplers[step]
+						sampler := session.Tg.Samplers[step]
 
 						if sampler.IsControlFlow {
 							switch sampler.ControlType {
@@ -827,6 +847,54 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									session.LoopCounters[sampler.LoopId]++
 								}
 							case "OnceOnlyEnd":
+								// Just fall through
+							case "ModuleCall":
+								// Find target node in plan.ThreadGroups
+								var targetTg *domain.ThreadGroup
+								if len(sampler.ModuleTargetNodePath) > 0 {
+									targetName := sampler.ModuleTargetNodePath[len(sampler.ModuleTargetNodePath)-1]
+									for _, ptg := range session.Plan.ThreadGroups {
+										if ptg.Name == targetName {
+											targetTg = ptg
+											break
+										}
+									}
+								}
+								if targetTg != nil && len(targetTg.Samplers) > 0 {
+									session.CallStack = append(session.CallStack, CallFrame{Tg: session.Tg, Step: step})
+									session.Tg = targetTg
+									step = -1 // will be 0 on next iteration
+								}
+							case "SwitchStart":
+								if len(sampler.SwitchChildStarts) > 0 {
+									switchVal := session.Evaluator.Evaluate(sampler.SwitchValueExpr)
+									selectedIndex := 0 // default to first child
+									if switchVal != "" {
+										// Try as index
+										if idx, err := strconv.Atoi(switchVal); err == nil {
+											if idx >= 0 && idx < len(sampler.SwitchChildStarts) {
+												selectedIndex = idx
+											}
+										} else {
+											// Try as name matching
+											for i, name := range sampler.SwitchChildNames {
+												if name == switchVal {
+													selectedIndex = i
+													break
+												}
+											}
+										}
+									}
+
+									startStep := sampler.SwitchChildStarts[selectedIndex]
+									endStep := sampler.SwitchChildEnds[selectedIndex]
+
+									session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+									step = startStep - 1
+								} else {
+									step = sampler.BlockEndIndex
+								}
+							case "SwitchEnd":
 								// Just fall through
 							case "RandomStart":
 								if len(sampler.RandomChildStarts) > 0 {

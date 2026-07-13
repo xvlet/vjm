@@ -246,4 +246,9 @@ type Sampler struct {
 	RandomOrderChildStarts []int
 	RandomOrderChildEnds   []int
 	RuntimeSecondsExpr     string // Runtime Controller runtime in seconds
+	SwitchValueExpr        string // Switch Controller value
+	SwitchChildStarts      []int
+	SwitchChildEnds        []int
+	SwitchChildNames       []string
+	ModuleTargetNodePath   []string // Module Controller target path
 }

@@ -41,7 +41,7 @@ func TestInterleaveController(t *testing.T) {
 	// Test Engine stateful execution
 	// We'll mock the pacer to just run 3 hits
 	eval := evaluator.NewDefaultEvaluator(plan.UserDefinedVariables)
-	session := engine.NewSession(0, tg, eval)
+	session := engine.NewSession(0, plan, tg, eval)
 
 	expectedURLs := []string{
 		"http://127.0.0.1:58080/test/controller/interleave/req1",

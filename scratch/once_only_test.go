@@ -30,7 +30,7 @@ func TestOnceOnlyController(t *testing.T) {
 	// Expect: OnceOnlyStart, Req1, OnceOnlyEnd, Req2
 
 	eval := evaluator.NewDefaultEvaluator(plan.UserDefinedVariables)
-	session := engine.NewSession(0, tg, eval)
+	session := engine.NewSession(0, plan, tg, eval)
 
 	// Since the ThreadGroup has 3 loops, we expect:
 	// Iter 1: Req1, Req2

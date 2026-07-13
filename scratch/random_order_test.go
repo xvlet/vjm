@@ -40,7 +40,7 @@ func TestRandomOrderController(t *testing.T) {
 	}
 
 	eval := evaluator.NewDefaultEvaluator(plan.UserDefinedVariables)
-	session := engine.NewSession(0, tg, eval)
+	session := engine.NewSession(0, plan, tg, eval)
 
 	var executionURLs []string
 
