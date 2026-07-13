@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -83,6 +84,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingForEachStartIndex string
 	var pendingForEachEndIndex string
 	var nextLoopId = 1
+	var pendingIncludePath string
 
 	// Counters and tracking arrays bool
 	var inFloatProperty bool
@@ -168,6 +170,29 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					pendingTransactionName = ""
 					pendingTransactionParent = false
 				}
+				if pendingIncludePath != "" && currentThreadGroup != nil {
+					incPath := pendingIncludePath
+					pendingIncludePath = "" // reset
+
+					// Resolve absolute path if relative
+					if !filepath.IsAbs(incPath) && filePath != "" {
+						incPath = filepath.Join(filepath.Dir(filePath), incPath)
+					}
+
+					// Recursively parse the external file
+					subParser := NewDefaultJmxParser()
+					subPlan, err := subParser.Parse(incPath)
+					if err == nil && subPlan != nil {
+						for _, tg := range subPlan.ThreadGroups {
+							// Append samplers
+							currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, tg.Samplers...)
+							// Append configs
+							currentThreadGroup.CSVDataSets = append(currentThreadGroup.CSVDataSets, tg.CSVDataSets...)
+							currentThreadGroup.Timers = append(currentThreadGroup.Timers, tg.Timers...)
+							currentThreadGroup.RandomVariables = append(currentThreadGroup.RandomVariables, tg.RandomVariables...)
+						}
+					}
+				}
 				if pendingLoopId > 0 && currentThreadGroup != nil {
 					startIndex := len(currentThreadGroup.Samplers)
 					loopStack = append(loopStack, LoopContext{
@@ -248,7 +273,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 			}
 
-			if strings.HasSuffix(currentTag, "ThreadGroup") {
+			if strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "TestFragmentController" {
 				actionType := "main"
 				switch currentTag {
 				case "SetupThreadGroup":
@@ -766,8 +791,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "boolProp":
-				if currentTag == "LoopController" && nameAttr == "LoopController.continue_forever" {
+				if nameAttr == "LoopController.continue_forever" {
 					pendingLoopContinue = (val == "true")
+				}
+				if nameAttr == "ForeachController.useSeparator" {
+					pendingForEachUseSeparator = (val == "true" || val == "") // default true
 				}
 				if nameAttr == "HTTPSampler.postBodyRaw" && val == "true" {
 					postBodyRaw = true
@@ -867,42 +895,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					continue
 				}
 				switch nameAttr {
-				case "LoopController.loops":
-					if currentTag == "LoopController" {
-						pendingLoopCountExpr = val
-					}
-				case "WhileController.condition":
-					if currentTag == "WhileController" {
-						pendingWhileCondition = val
-					}
-				case "CriticalSectionController.lockName":
-					if currentTag == "CriticalSectionController" {
-						pendingCriticalLockName = val
-					}
-				case "ForeachController.inputVal":
-					if currentTag == "ForeachController" {
-						pendingForEachInputVal = val
-					}
-				case "ForeachController.returnVal":
-					if currentTag == "ForeachController" {
-						pendingForEachReturnVal = val
-					}
-				case "ForeachController.useSeparator":
-					if currentTag == "ForeachController" {
-						if strings.ToLower(val) == "false" {
-							pendingForEachUseSeparator = false
-						} else {
-							pendingForEachUseSeparator = true
-						}
-					}
-				case "ForeachController.startIndex":
-					if currentTag == "ForeachController" {
-						pendingForEachStartIndex = val
-					}
-				case "ForeachController.endIndex":
-					if currentTag == "ForeachController" {
-						pendingForEachEndIndex = val
-					}
+
 				case "IfController.condition":
 					pendingIfCondition = val
 				case "TransactionController.parent":
@@ -1037,8 +1030,24 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if v, err := strconv.ParseFloat(val, 64); err == nil {
 						pendingWeight = v
 					}
+				case "IncludeController.includepath":
+					pendingIncludePath = val
 				case "Argument.name":
 					currentArgName = val
+				case "LoopController.loops":
+					pendingLoopCountExpr = val
+				case "WhileController.condition":
+					pendingWhileCondition = val
+				case "CriticalSectionController.lockName":
+					pendingCriticalLockName = val
+				case "ForeachController.inputVal":
+					pendingForEachInputVal = val
+				case "ForeachController.returnVal":
+					pendingForEachReturnVal = val
+				case "ForeachController.startIndex":
+					pendingForEachStartIndex = val
+				case "ForeachController.endIndex":
+					pendingForEachEndIndex = val
 				case "Argument.value":
 					if currentReq == nil && currentArgName != "" {
 						// Global User Defined Variable (outside any sampler)

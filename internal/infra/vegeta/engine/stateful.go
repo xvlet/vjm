@@ -167,11 +167,10 @@ type Session struct {
 
 func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
 	// Create a new evaluator for this session
-	// We need to extend Evaluator to support cloning or passing variables
 	return &Session{
 		ID:           id,
 		Variables:    make(map[string]string),
-		Evaluator:    globalEval,
+		Evaluator:    globalEval.Clone(),
 		Tg:           tg,
 		Step:         0,
 		Cache:        make(map[string]*CacheEntry),
@@ -741,9 +740,9 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								}
 								inputVarName := fmt.Sprintf("%s%s%d", session.Evaluator.Evaluate(sampler.ForEachInputVal), sep, idx)
 
-								val, exists := session.Variables[inputVarName]
-								if !exists {
-									// exit loop
+								valStr := session.Evaluator.Evaluate("${" + inputVarName + "}")
+								if valStr == "${"+inputVarName+"}" {
+									// Variable does not exist, exit loop
 									delete(session.LoopCounters, sampler.LoopId)
 									step = sampler.LoopJumpIndex
 									continue
@@ -752,8 +751,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								// Set return variable
 								returnVar := session.Evaluator.Evaluate(sampler.ForEachReturnVal)
 								if returnVar != "" {
-									session.Variables[returnVar] = val
-									session.Evaluator.SetVariable(returnVar, val)
+									session.Variables[returnVar] = valStr
+									session.Evaluator.SetVariable(returnVar, valStr)
 								}
 							case "ForEachEnd":
 								session.LoopCounters[sampler.LoopId]++
