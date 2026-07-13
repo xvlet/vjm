@@ -64,11 +64,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 		Depth      int
 		LoopId     int
 		StartIndex int
+		IsWhile    bool
 	}
 	var loopStack []LoopContext
 	var pendingLoopId int
 	var pendingLoopCountExpr string
 	var pendingLoopContinue bool
+	var pendingWhileId int
+	var pendingWhileCondition string
 	var nextLoopId = 1
 
 	// Counters and tracking arrays bool
@@ -161,6 +164,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						Depth:      hashTreeDepth,
 						LoopId:     pendingLoopId,
 						StartIndex: startIndex,
+						IsWhile:    false,
 					})
 					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
 						IsControlFlow: true,
@@ -172,6 +176,23 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					pendingLoopId = 0
 					pendingLoopCountExpr = ""
 					pendingLoopContinue = false
+				}
+				if pendingWhileId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:      hashTreeDepth,
+						LoopId:     pendingWhileId,
+						StartIndex: startIndex,
+						IsWhile:    true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow:  true,
+						ControlType:    "WhileStart",
+						LoopId:         pendingWhileId,
+						WhileCondition: pendingWhileCondition,
+					})
+					pendingWhileId = 0
+					pendingWhileCondition = ""
 				}
 			}
 
@@ -275,6 +296,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 			} else if currentTag == "LoopController" {
 				pendingLoopId = nextLoopId
+				nextLoopId++
+			} else if currentTag == "WhileController" {
+				pendingWhileId = nextLoopId
 				nextLoopId++
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
@@ -445,18 +469,28 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 
 		case xml.EndElement:
 			if se.Name.Local == "hashTree" {
-				// Handle LoopEnd
+				// Handle LoopEnd / WhileEnd
 				if len(loopStack) > 0 && currentThreadGroup != nil {
 					top := loopStack[len(loopStack)-1]
 					if top.Depth == hashTreeDepth {
 						loopStack = loopStack[:len(loopStack)-1]
-						
+
+						endType := "LoopEnd"
+						if top.IsWhile {
+							endType = "WhileEnd"
+						}
+
 						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
 							IsControlFlow: true,
-							ControlType:   "LoopEnd",
+							ControlType:   endType,
 							LoopId:        top.LoopId,
 							LoopJumpIndex: top.StartIndex,
 						})
+
+						if top.IsWhile {
+							// Update WhileStart's JumpIndex to point to the WhileEnd
+							currentThreadGroup.Samplers[top.StartIndex].LoopJumpIndex = len(currentThreadGroup.Samplers) - 1
+						}
 					}
 				}
 
@@ -767,6 +801,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "LoopController.loops":
 					if currentTag == "LoopController" {
 						pendingLoopCountExpr = val
+					}
+				case "WhileController.condition":
+					if currentTag == "WhileController" {
+						pendingWhileCondition = val
 					}
 				case "IfController.condition":
 					pendingIfCondition = val

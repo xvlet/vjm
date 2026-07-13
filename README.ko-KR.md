@@ -406,7 +406,7 @@ Error Set:
 - [x] **If Controller**
 - [x] **Transaction Controller**
 - [x] **Loop Controller**
-- [ ] **While Controller**
+- [x] **While Controller**
 - [ ] **Critical Section Controller**
 - [ ] **ForEach Controller**
 - [ ] **Include Controller**

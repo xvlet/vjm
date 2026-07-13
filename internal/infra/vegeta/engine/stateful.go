@@ -636,7 +636,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					// Execute samplers sequentially
 					for step := 0; step < len(tg.Samplers); step++ {
 						sampler := tg.Samplers[step]
-						
+
 						if sampler.IsControlFlow {
 							switch sampler.ControlType {
 							case "LoopStart":
@@ -658,11 +658,23 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 										if count > 1 {
 											session.LoopCounters[sampler.LoopId] = count - 1
 										}
-										step = sampler.LoopJumpIndex // jump back
+										step = sampler.LoopJumpIndex // jump back to first item inside loop
 									} else {
 										delete(session.LoopCounters, sampler.LoopId) // loop done
 									}
 								}
+							case "WhileStart":
+								condStr := sampler.WhileCondition
+								if condStr != "" && strings.ToUpper(condStr) != "LAST" {
+									// EvaluateLogic returns false if expression resolves to false
+									if !session.Evaluator.EvaluateLogic(condStr) {
+										// Exit loop: jump to WhileEnd (step++ will advance to the next sampler)
+										step = sampler.LoopJumpIndex
+									}
+								}
+							case "WhileEnd":
+								// Jump back to WhileStart so condition is evaluated again
+								step = sampler.LoopJumpIndex - 1
 							}
 							continue
 						}
