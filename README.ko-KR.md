@@ -404,8 +404,8 @@ Error Set:
 
 ### Logic Controllers (논리 컨트롤러)
 - [x] **If Controller**
-- [ ] **Transaction Controller**
-- [ ] **Loop Controller**
+- [x] **Transaction Controller**
+- [x] **Loop Controller**
 - [ ] **While Controller**
 - [ ] **Critical Section Controller**
 - [ ] **ForEach Controller**

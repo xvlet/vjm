@@ -213,7 +213,7 @@ type ThreadGroup struct {
 	Assertions             []Assertion
 }
 
-// Sampler represents a JMeter HTTP Sampler
+// Sampler represents a JMeter HTTP Sampler (or Control Flow Marker)
 type Sampler struct {
 	Name              string
 	Request           *RequestTemplate
@@ -223,4 +223,12 @@ type Sampler struct {
 	TransactionParent bool   // Generate parent sample
 	Extractors        []Extractor
 	Assertions        []Assertion
+
+	// Loop Controller specific fields (Control Flow Markers)
+	IsControlFlow   bool   // True if this is a marker (not a real request)
+	ControlType     string // "LoopStart" or "LoopEnd"
+	LoopId          int    // Unique ID linking LoopStart and LoopEnd
+	LoopCountExpr   string // Number of loops or "-1" for forever
+	LoopContinue    bool   // If continue_forever is true
+	LoopJumpIndex   int    // The index to jump back to (for LoopEnd)
 }

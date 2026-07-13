@@ -60,6 +60,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	transactionNameMap := make(map[int]string)
 	transactionParentMap := make(map[int]bool)
 
+	type LoopContext struct {
+		Depth      int
+		LoopId     int
+		StartIndex int
+	}
+	var loopStack []LoopContext
+	var pendingLoopId int
+	var pendingLoopCountExpr string
+	var pendingLoopContinue bool
+	var nextLoopId = 1
+
 	// Counters and tracking arrays bool
 	var inFloatProperty bool
 	var floatPropName string
@@ -143,6 +154,24 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					transactionParentMap[hashTreeDepth] = pendingTransactionParent
 					pendingTransactionName = ""
 					pendingTransactionParent = false
+				}
+				if pendingLoopId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:      hashTreeDepth,
+						LoopId:     pendingLoopId,
+						StartIndex: startIndex,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow: true,
+						ControlType:   "LoopStart",
+						LoopId:        pendingLoopId,
+						LoopCountExpr: pendingLoopCountExpr,
+						LoopContinue:  pendingLoopContinue,
+					})
+					pendingLoopId = 0
+					pendingLoopCountExpr = ""
+					pendingLoopContinue = false
 				}
 			}
 
@@ -244,6 +273,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						pendingTransactionName = nameAttr
 					}
 				}
+			} else if currentTag == "LoopController" {
+				pendingLoopId = nextLoopId
+				nextLoopId++
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
 				floatPropName = ""
@@ -413,6 +445,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 
 		case xml.EndElement:
 			if se.Name.Local == "hashTree" {
+				// Handle LoopEnd
+				if len(loopStack) > 0 && currentThreadGroup != nil {
+					top := loopStack[len(loopStack)-1]
+					if top.Depth == hashTreeDepth {
+						loopStack = loopStack[:len(loopStack)-1]
+						
+						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+							IsControlFlow: true,
+							ControlType:   "LoopEnd",
+							LoopId:        top.LoopId,
+							LoopJumpIndex: top.StartIndex,
+						})
+					}
+				}
+
 				delete(weightMap, hashTreeDepth)
 				delete(ifConditionMap, hashTreeDepth)
 				delete(transactionNameMap, hashTreeDepth)
@@ -616,6 +663,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "boolProp":
+				if currentTag == "LoopController" && nameAttr == "LoopController.continue_forever" {
+					pendingLoopContinue = (val == "true")
+				}
 				if nameAttr == "HTTPSampler.postBodyRaw" && val == "true" {
 					postBodyRaw = true
 				}
@@ -714,6 +764,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					continue
 				}
 				switch nameAttr {
+				case "LoopController.loops":
+					if currentTag == "LoopController" {
+						pendingLoopCountExpr = val
+					}
 				case "IfController.condition":
 					pendingIfCondition = val
 				case "TransactionController.parent":

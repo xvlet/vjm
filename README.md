@@ -405,8 +405,8 @@ Error Set:
 
 ### Logic Controllers
 - [x] **If Controller**
-- [ ] **Transaction Controller**
-- [ ] **Loop Controller**
+- [x] **Transaction Controller**
+- [x] **Loop Controller**
 - [ ] **While Controller**
 - [ ] **Critical Section Controller**
 - [ ] **ForEach Controller**

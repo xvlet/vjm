@@ -153,24 +153,26 @@ var bufferPool = sync.Pool{
 
 // Session represents a virtual user executing a Thread Group sequentially
 type Session struct {
-	ID        uint64
-	Variables map[string]string
-	Evaluator evaluator.Evaluator
-	Tg        *domain.ThreadGroup
-	Step      int // Current sampler index
-	Cache     map[string]*CacheEntry
+	ID           uint64
+	Variables    map[string]string
+	Evaluator    evaluator.Evaluator
+	Tg           *domain.ThreadGroup
+	Step         int // Current sampler index
+	Cache        map[string]*CacheEntry
+	LoopCounters map[int]int
 }
 
 func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
 	// Create a new evaluator for this session
 	// We need to extend Evaluator to support cloning or passing variables
 	return &Session{
-		ID:        id,
-		Variables: make(map[string]string),
-		Evaluator: globalEval,
-		Tg:        tg,
-		Step:      0,
-		Cache:     make(map[string]*CacheEntry),
+		ID:           id,
+		Variables:    make(map[string]string),
+		Evaluator:    globalEval,
+		Tg:           tg,
+		Step:         0,
+		Cache:        make(map[string]*CacheEntry),
+		LoopCounters: make(map[int]int),
 	}
 }
 
@@ -632,7 +634,39 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					}
 
 					// Execute samplers sequentially
-					for step, sampler := range tg.Samplers {
+					for step := 0; step < len(tg.Samplers); step++ {
+						sampler := tg.Samplers[step]
+						
+						if sampler.IsControlFlow {
+							switch sampler.ControlType {
+							case "LoopStart":
+								if _, ok := session.LoopCounters[sampler.LoopId]; !ok {
+									if sampler.LoopContinue {
+										session.LoopCounters[sampler.LoopId] = -1
+									} else {
+										cStr := session.Evaluator.Evaluate(sampler.LoopCountExpr)
+										c, err := strconv.Atoi(cStr)
+										if err != nil || c < 1 {
+											c = 1 // default or invalid
+										}
+										session.LoopCounters[sampler.LoopId] = c
+									}
+								}
+							case "LoopEnd":
+								if count, ok := session.LoopCounters[sampler.LoopId]; ok {
+									if count == -1 || count > 1 {
+										if count > 1 {
+											session.LoopCounters[sampler.LoopId] = count - 1
+										}
+										step = sampler.LoopJumpIndex // jump back
+									} else {
+										delete(session.LoopCounters, sampler.LoopId) // loop done
+									}
+								}
+							}
+							continue
+						}
+
 						if sampler.IfCondition != "" {
 							if !session.Evaluator.EvaluateLogic(sampler.IfCondition) {
 								continue
