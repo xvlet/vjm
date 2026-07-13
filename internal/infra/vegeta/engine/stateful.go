@@ -708,6 +708,56 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									mu.Unlock()
 									delete(session.HeldLocks, lockName)
 								}
+							case "ForEachStart":
+								// Initialize if not exists
+								if _, ok := session.LoopCounters[sampler.LoopId]; !ok {
+									startIdx := 0
+									if sampler.ForEachStartIndex != "" {
+										if val, err := strconv.Atoi(session.Evaluator.Evaluate(sampler.ForEachStartIndex)); err == nil {
+											startIdx = val
+										}
+									}
+									session.LoopCounters[sampler.LoopId] = startIdx + 1
+								}
+
+								idx := session.LoopCounters[sampler.LoopId]
+
+								// Check endIndex if specified
+								if sampler.ForEachEndIndex != "" {
+									if endIdx, err := strconv.Atoi(session.Evaluator.Evaluate(sampler.ForEachEndIndex)); err == nil {
+										if idx > endIdx {
+											// exit loop
+											delete(session.LoopCounters, sampler.LoopId)
+											step = sampler.LoopJumpIndex
+											continue
+										}
+									}
+								}
+
+								// Construct var name
+								sep := ""
+								if sampler.ForEachUseSeparator {
+									sep = "_"
+								}
+								inputVarName := fmt.Sprintf("%s%s%d", session.Evaluator.Evaluate(sampler.ForEachInputVal), sep, idx)
+
+								val, exists := session.Variables[inputVarName]
+								if !exists {
+									// exit loop
+									delete(session.LoopCounters, sampler.LoopId)
+									step = sampler.LoopJumpIndex
+									continue
+								}
+
+								// Set return variable
+								returnVar := session.Evaluator.Evaluate(sampler.ForEachReturnVal)
+								if returnVar != "" {
+									session.Variables[returnVar] = val
+									session.Evaluator.SetVariable(returnVar, val)
+								}
+							case "ForEachEnd":
+								session.LoopCounters[sampler.LoopId]++
+								step = sampler.LoopJumpIndex - 1 // jump back to ForEachStart
 							}
 							continue
 						}

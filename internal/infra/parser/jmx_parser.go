@@ -66,6 +66,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 		StartIndex int
 		IsWhile    bool
 		IsCritical bool
+		IsForEach  bool
 	}
 	var loopStack []LoopContext
 	var pendingLoopId int
@@ -75,6 +76,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingWhileCondition string
 	var pendingCriticalId int
 	var pendingCriticalLockName string
+	var pendingForEachId int
+	var pendingForEachInputVal string
+	var pendingForEachReturnVal string
+	var pendingForEachUseSeparator bool
+	var pendingForEachStartIndex string
+	var pendingForEachEndIndex string
 	var nextLoopId = 1
 
 	// Counters and tracking arrays bool
@@ -214,6 +221,31 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					pendingCriticalId = 0
 					pendingCriticalLockName = ""
 				}
+				if pendingForEachId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:      hashTreeDepth,
+						LoopId:     pendingForEachId,
+						StartIndex: startIndex,
+						IsForEach:  true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow:       true,
+						ControlType:         "ForEachStart",
+						LoopId:              pendingForEachId,
+						ForEachInputVal:     pendingForEachInputVal,
+						ForEachReturnVal:    pendingForEachReturnVal,
+						ForEachUseSeparator: pendingForEachUseSeparator,
+						ForEachStartIndex:   pendingForEachStartIndex,
+						ForEachEndIndex:     pendingForEachEndIndex,
+					})
+					pendingForEachId = 0
+					pendingForEachInputVal = ""
+					pendingForEachReturnVal = ""
+					pendingForEachUseSeparator = true
+					pendingForEachStartIndex = ""
+					pendingForEachEndIndex = ""
+				}
 			}
 
 			if strings.HasSuffix(currentTag, "ThreadGroup") {
@@ -322,6 +354,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				nextLoopId++
 			} else if currentTag == "CriticalSectionController" {
 				pendingCriticalId = nextLoopId
+				nextLoopId++
+			} else if currentTag == "ForeachController" {
+				pendingForEachId = nextLoopId
+				pendingForEachUseSeparator = true // Default to true
 				nextLoopId++
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
@@ -503,6 +539,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							endType = "WhileEnd"
 						} else if top.IsCritical {
 							endType = "CriticalEnd"
+						} else if top.IsForEach {
+							endType = "ForEachEnd"
 						}
 
 						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
@@ -518,6 +556,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						} else if top.IsCritical {
 							// CriticalEnd needs the lock name, we copy it from CriticalStart
 							currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1].CriticalLockName = currentThreadGroup.Samplers[top.StartIndex].CriticalLockName
+						} else if top.IsForEach {
+							// Update ForEachStart's JumpIndex to point to the ForEachEnd
+							currentThreadGroup.Samplers[top.StartIndex].LoopJumpIndex = len(currentThreadGroup.Samplers) - 1
 						}
 					}
 				}
@@ -837,6 +878,30 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "CriticalSectionController.lockName":
 					if currentTag == "CriticalSectionController" {
 						pendingCriticalLockName = val
+					}
+				case "ForeachController.inputVal":
+					if currentTag == "ForeachController" {
+						pendingForEachInputVal = val
+					}
+				case "ForeachController.returnVal":
+					if currentTag == "ForeachController" {
+						pendingForEachReturnVal = val
+					}
+				case "ForeachController.useSeparator":
+					if currentTag == "ForeachController" {
+						if strings.ToLower(val) == "false" {
+							pendingForEachUseSeparator = false
+						} else {
+							pendingForEachUseSeparator = true
+						}
+					}
+				case "ForeachController.startIndex":
+					if currentTag == "ForeachController" {
+						pendingForEachStartIndex = val
+					}
+				case "ForeachController.endIndex":
+					if currentTag == "ForeachController" {
+						pendingForEachEndIndex = val
 					}
 				case "IfController.condition":
 					pendingIfCondition = val

@@ -409,7 +409,7 @@ Error Set:
 - [x] **Loop Controller**
 - [x] **While Controller**
 - [x] **Critical Section Controller**
-- [ ] **ForEach Controller**
+- [x] **ForEach Controller**
 - [ ] **Include Controller**
 - [ ] **Interleave Controller**
 - [ ] **Once Only Controller**
