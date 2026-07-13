@@ -165,6 +165,7 @@ type Session struct {
 	HeldLocks        map[string]*sync.Mutex
 	InterleaveJump   map[int]int
 	RandomOrderState map[int]*RandomOrderState
+	RuntimeDeadlines map[int]time.Time
 }
 
 type RandomOrderState struct {
@@ -185,6 +186,7 @@ func NewSession(id uint64, tg *domain.ThreadGroup, globalEval evaluator.Evaluato
 		HeldLocks:        make(map[string]*sync.Mutex),
 		InterleaveJump:   make(map[int]int),
 		RandomOrderState: make(map[int]*RandomOrderState),
+		RuntimeDeadlines: make(map[int]time.Time),
 	}
 }
 
@@ -720,6 +722,36 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									mu.Unlock()
 									delete(session.HeldLocks, lockName)
 								}
+							case "RuntimeStart":
+								// Initialize deadline if it doesn't exist
+								if _, ok := session.RuntimeDeadlines[sampler.LoopId]; !ok {
+									secStr := session.Evaluator.Evaluate(sampler.RuntimeSecondsExpr)
+									sec, err := strconv.ParseFloat(secStr, 64)
+									if err != nil || sec < 0 {
+										sec = 0
+									}
+									if sec == 0 {
+										// 0 means it should not execute at all (or run forever? JMeter says 0 means run 0 seconds)
+										// Wait, if 0, it means run 0 seconds, so exit immediately.
+										step = sampler.BlockEndIndex
+										continue
+									} else {
+										session.RuntimeDeadlines[sampler.LoopId] = time.Now().Add(time.Duration(sec * float64(time.Second)))
+									}
+								}
+
+								// Check if deadline exceeded
+								if deadline, ok := session.RuntimeDeadlines[sampler.LoopId]; ok {
+									if time.Now().After(deadline) {
+										// Exit loop: jump to RuntimeEnd
+										step = sampler.BlockEndIndex
+										delete(session.RuntimeDeadlines, sampler.LoopId) // reset for next Thread iteration
+										continue
+									}
+								}
+							case "RuntimeEnd":
+								// Jump back to RuntimeStart to check deadline
+								step = sampler.LoopJumpIndex - 1
 							case "ForEachStart":
 								// Initialize if not exists
 								if _, ok := session.LoopCounters[sampler.LoopId]; !ok {

@@ -72,6 +72,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 		IsOnceOnly    bool
 		IsRandom      bool
 		IsRandomOrder bool
+		IsRuntime     bool
 	}
 	var loopStack []LoopContext
 	var pendingLoopId int
@@ -91,6 +92,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingOnceOnlyId int
 	var pendingRandomId int
 	var pendingRandomOrderId int
+	var pendingRuntimeId int
+	var pendingRuntimeSeconds string
 	var nextLoopId = 1
 	var pendingIncludePath string
 
@@ -250,6 +253,23 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					})
 					pendingWhileId = 0
 					pendingWhileCondition = ""
+				}
+				if pendingRuntimeId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:      hashTreeDepth,
+						LoopId:     pendingRuntimeId,
+						StartIndex: startIndex,
+						IsRuntime:  true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow:      true,
+						ControlType:        "RuntimeStart",
+						LoopId:             pendingRuntimeId,
+						RuntimeSecondsExpr: pendingRuntimeSeconds,
+					})
+					pendingRuntimeId = 0
+					pendingRuntimeSeconds = ""
 				}
 				if pendingCriticalId > 0 && currentThreadGroup != nil {
 					startIndex := len(currentThreadGroup.Samplers)
@@ -469,6 +489,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if currentTag == "RecordingController" {
 				// Recording Controller is a transparent container.
 				// No specific state tracking is needed, children in hashTree will be parsed naturally.
+			} else if currentTag == "RunTime" {
+				pendingRuntimeId = nextLoopId
+				nextLoopId++
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
 				floatPropName = ""
@@ -659,6 +682,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							endType = "RandomEnd"
 						} else if top.IsRandomOrder {
 							endType = "RandomOrderEnd"
+						} else if top.IsRuntime {
+							endType = "RuntimeEnd"
 						}
 
 						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
@@ -677,9 +702,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						} else if top.IsForEach {
 							// Update ForEachStart's JumpIndex to point to the ForEachEnd
 							currentThreadGroup.Samplers[top.StartIndex].LoopJumpIndex = len(currentThreadGroup.Samplers) - 1
+						} else if top.IsRuntime {
+							// Update RuntimeStart's JumpIndex to point to the RuntimeEnd
+							currentThreadGroup.Samplers[top.StartIndex].LoopJumpIndex = len(currentThreadGroup.Samplers) - 1
 						}
 
-						// Always update BlockEndIndex on the Start node
+						// Specific block ends update BlockEndIndex on the Start node
 						currentThreadGroup.Samplers[top.StartIndex].BlockEndIndex = len(currentThreadGroup.Samplers) - 1
 					}
 				}
@@ -1144,6 +1172,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					pendingForEachStartIndex = val
 				case "ForeachController.endIndex":
 					pendingForEachEndIndex = val
+				case "RunTime.seconds":
+					pendingRuntimeSeconds = val
 				case "Argument.value":
 					if currentReq == nil && currentArgName != "" {
 						// Global User Defined Variable (outside any sampler)

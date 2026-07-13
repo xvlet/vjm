@@ -245,4 +245,5 @@ type Sampler struct {
 	RandomChildEnds        []int
 	RandomOrderChildStarts []int
 	RandomOrderChildEnds   []int
+	RuntimeSecondsExpr     string // Runtime Controller runtime in seconds
 }

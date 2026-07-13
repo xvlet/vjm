@@ -415,7 +415,7 @@ Error Set:
 - [x] **Random Controller**
 - [x] **Random Order Controller**
 - [x] **Recording Controller**
-- [ ] **Runtime Controller**
+- [x] **Runtime Controller**
 - [ ] **Simple Controller**
 - [x] **Throughput Controller**
 - [ ] **Module Controller**
