@@ -241,4 +241,6 @@ type Sampler struct {
 	ForEachEndIndex       string // ForEach Controller end index (inclusive)
 	InterleaveChildStarts []int
 	InterleaveChildEnds   []int
+	RandomChildStarts     []int
+	RandomChildEnds       []int
 }

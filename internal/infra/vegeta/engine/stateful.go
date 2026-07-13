@@ -789,6 +789,23 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								}
 							case "OnceOnlyEnd":
 								// Just fall through
+							case "RandomStart":
+								if len(sampler.RandomChildStarts) > 0 {
+									// Choose a random child
+									childIndex := rand.IntN(len(sampler.RandomChildStarts))
+									startStep := sampler.RandomChildStarts[childIndex]
+									endStep := sampler.RandomChildEnds[childIndex]
+
+									// When step reaches endStep + 1, jump to RandomEnd
+									session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+
+									// jump to the child
+									step = startStep - 1
+								} else {
+									step = sampler.BlockEndIndex
+								}
+							case "RandomEnd":
+								// Just fall through
 							}
 							continue
 						}
