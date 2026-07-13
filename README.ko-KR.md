@@ -440,7 +440,7 @@ Error Set:
 - ~~[ ] **LDAP Request Defaults**~~ (제외 - JVM 종속)
 - ~~[ ] **Login Config Element**~~ (제외 - 비 HTTP 전용)
 - [x] **Random Variable**
-- [ ] **Simple Config Element**
+- ~~[ ] **Simple Config Element**~~ (제외 - UDV와 기능 완벽 겹침)
 - ~~[ ] **TCP Sampler Config**~~ (제외 - 비 HTTP)
 
 ### Listeners (리스너)
@@ -453,13 +453,13 @@ Error Set:
 - [ ] **Comparison Assertion Visualizer**
 - [ ] **Generate Summary Results**
 - [ ] **Graph Results**
-- [ ] **JSR223 Listener**
+- ~~[ ] **JSR223 Listener**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [ ] **Mailer Visualizer**
 - [ ] **Response Time Graph**
 - [ ] **Save Responses to a file**
 - [ ] **Simple Data Writer**
 - [ ] **View Results in Table**
-- [ ] **BeanShell Listener**
+- ~~[ ] **BeanShell Listener**~~ (제외 - JVM 종속)
 
 ### Timers (타이머)
 - [x] **Constant Timer**
@@ -474,13 +474,13 @@ Error Set:
 
 ### Pre Processors (전처리기)
 - [x] **User Parameters**
-- [ ] **JSR223 PreProcessor**
+- ~~[ ] **JSR223 PreProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [ ] **HTML Link Parser**
 - [ ] **HTTP URL Re-writing Modifier**
-- [ ] **JDBC PreProcessor**
+- ~~[ ] **JDBC PreProcessor**~~ (제외 - JVM/JDBC 종속)
 - [ ] **RegEx User Parameters**
 - [ ] **Sample Timeout**
-- [ ] **BeanShell PreProcessor**
+- ~~[ ] **BeanShell PreProcessor**~~ (제외 - JVM 종속)
 
 ### Post Processors (후처리기)
 - [x] **JSON Extractor**
@@ -488,37 +488,37 @@ Error Set:
 - [ ] **CSS Selector Extractor**
 - [ ] **JSON JMESPath Extractor**
 - [ ] **Boundary Extractor**
-- [ ] **JSR223 PostProcessor**
+- ~~[ ] **JSR223 PostProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [ ] **Debug PostProcessor**
-- [ ] **JDBC PostProcessor**
+- ~~[ ] **JDBC PostProcessor**~~ (제외 - JVM/JDBC 종속)
 - [ ] **Result Status Action Handler**
 - [ ] **XPath Extractor**
-- [ ] **XPath2 Extractor**
-- [ ] **BeanShell PostProcessor**
+- ~~[ ] **XPath2 Extractor**~~ (제외 - Java Saxon 기반 XPath 2.0 종속)
+- ~~[ ] **BeanShell PostProcessor**~~ (제외 - JVM 종속)
 
 ### Assertions (검증)
 - [x] **Response Assertion**
 - [x] **JSON Assertion**
 - [ ] **Size Assertion**
-- [ ] **JSR223 Assertion**
+- ~~[ ] **JSR223 Assertion**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [ ] **XPath Assertion**
 - [ ] **Compare Assertion**
 - [ ] **Duration Assertion**
-- [ ] **HTML Assertion**
+- ~~[ ] **HTML Assertion**~~ (제외 - JTidy(Java) 라이브러리 종속)
 - [ ] **MD5Hex Assertion**
 - [ ] **SMIME Assertion**
 - [ ] **XML Assertion**
-- [ ] **XML Schema Assertion**
-- [ ] **XPath2 Assertion**
-- [ ] **BeanShell Assertion**
+- ~~[ ] **XML Schema Assertion**~~ (제외 - 완벽한 XSD 검증을 위한 CGO/외부 라이브러리 종속)
+- ~~[ ] **XPath2 Assertion**~~ (제외 - Java Saxon 기반 XPath 2.0 종속)
+- ~~[ ] **BeanShell Assertion**~~ (제외 - JVM 종속)
 
 ### Test Fragment (테스트 조각)
-- [ ] **Test Fragment**
+- [x] **Test Fragment**
 
 ### Non-Test Elements (비테스트 요소)
-- [ ] **HTTP Mirror Server**
-- [ ] **HTTP(S) Test Script Recorder**
-- [ ] **Property Display**
+- ~~[ ] **HTTP Mirror Server**~~ (제외 - GUI 디버깅 전용 로컬 서버)
+- ~~[ ] **HTTP(S) Test Script Recorder**~~ (제외 - GUI 프록시 레코딩 전용)
+- ~~[ ] **Property Display**~~ (제외 - GUI 전용 컴포넌트)
 
 ---
 

@@ -441,8 +441,8 @@ Error Set:
 - ~~[ ] **LDAP Request Defaults**~~ (Excluded - JVM dependent)
 - ~~[ ] **Login Config Element**~~ (Excluded - Non HTTP)
 - [x] **Random Variable**
-- [ ] **Simple Config Element**
-- ~~[ ] **TCP Sampler Config**~~ (Excluded - Non HTTP)
+- ~~[ ] **Simple Config Element**~~ (Excluded - fully overlaps with UDV)
+- ~~[ ] **TCP Sampler Config**~~ (Excluded - non-HTTP)
 
 ### Listeners
 - [x] **View Results Tree** (File output only)
@@ -454,13 +454,13 @@ Error Set:
 - [ ] **Comparison Assertion Visualizer**
 - [ ] **Generate Summary Results**
 - [ ] **Graph Results**
-- [ ] **JSR223 Listener**
+- ~~[ ] **JSR223 Listener**~~ (Excluded - JVM/Groovy script dependent)
 - [ ] **Mailer Visualizer**
 - [ ] **Response Time Graph**
 - [ ] **Save Responses to a file**
 - [ ] **Simple Data Writer**
 - [ ] **View Results in Table**
-- [ ] **BeanShell Listener**
+- ~~[ ] **BeanShell Listener**~~ (Excluded - JVM dependent)
 
 ### Timers
 - [x] **Constant Timer**
@@ -475,13 +475,13 @@ Error Set:
 
 ### Pre Processors
 - [x] **User Parameters**
-- [ ] **JSR223 PreProcessor**
+- ~~[ ] **JSR223 PreProcessor**~~ (Excluded - JVM/Groovy script dependent)
 - [ ] **HTML Link Parser**
 - [ ] **HTTP URL Re-writing Modifier**
-- [ ] **JDBC PreProcessor**
+- ~~[ ] **JDBC PreProcessor**~~ (Excluded - JVM/JDBC dependent)
 - [ ] **RegEx User Parameters**
 - [ ] **Sample Timeout**
-- [ ] **BeanShell PreProcessor**
+- ~~[ ] **BeanShell PreProcessor**~~ (Excluded - JVM dependent)
 
 ### Post Processors
 - [x] **JSON Extractor**
@@ -489,37 +489,37 @@ Error Set:
 - [ ] **CSS Selector Extractor**
 - [ ] **JSON JMESPath Extractor**
 - [ ] **Boundary Extractor**
-- [ ] **JSR223 PostProcessor**
+- ~~[ ] **JSR223 PostProcessor**~~ (Excluded - JVM/Groovy script dependent)
 - [ ] **Debug PostProcessor**
-- [ ] **JDBC PostProcessor**
+- ~~[ ] **JDBC PostProcessor**~~ (Excluded - JVM/JDBC dependent)
 - [ ] **Result Status Action Handler**
 - [ ] **XPath Extractor**
-- [ ] **XPath2 Extractor**
-- [ ] **BeanShell PostProcessor**
+- ~~[ ] **XPath2 Extractor**~~ (Excluded - Java Saxon XPath 2.0 dependent)
+- ~~[ ] **BeanShell PostProcessor**~~ (Excluded - JVM dependent)
 
 ### Assertions
 - [x] **Response Assertion**
 - [x] **JSON Assertion**
 - [ ] **Size Assertion**
-- [ ] **JSR223 Assertion**
+- ~~[ ] **JSR223 Assertion**~~ (Excluded - JVM/Groovy script dependent)
 - [ ] **XPath Assertion**
 - [ ] **Compare Assertion**
 - [ ] **Duration Assertion**
-- [ ] **HTML Assertion**
+- ~~[ ] **HTML Assertion**~~ (Excluded - JTidy Java library dependent)
 - [ ] **MD5Hex Assertion**
 - [ ] **SMIME Assertion**
 - [ ] **XML Assertion**
-- [ ] **XML Schema Assertion**
-- [ ] **XPath2 Assertion**
-- [ ] **BeanShell Assertion**
+- ~~[ ] **XML Schema Assertion**~~ (Excluded - CGO/external library dependent for full XSD support)
+- ~~[ ] **XPath2 Assertion**~~ (Excluded - Java Saxon XPath 2.0 dependent)
+- ~~[ ] **BeanShell Assertion**~~ (Excluded - JVM dependent)
 
 ### Test Fragment
-- [ ] **Test Fragment**
+- [x] **Test Fragment**
 
 ### Non-Test Elements
-- [ ] **HTTP Mirror Server**
-- [ ] **HTTP(S) Test Script Recorder**
-- [ ] **Property Display**
+- ~~[ ] **HTTP Mirror Server**~~ (Excluded - GUI local debugging server)
+- ~~[ ] **HTTP(S) Test Script Recorder**~~ (Excluded - GUI proxy recorder)
+- ~~[ ] **Property Display**~~ (Excluded - GUI component)
 
 ---
 
