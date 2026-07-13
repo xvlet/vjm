@@ -466,6 +466,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				pendingForEachId = nextLoopId
 				pendingForEachUseSeparator = true // Default to true
 				nextLoopId++
+			} else if currentTag == "RecordingController" {
+				// Recording Controller is a transparent container.
+				// No specific state tracking is needed, children in hashTree will be parsed naturally.
 			} else if currentTag == "FloatProperty" {
 				inFloatProperty = true
 				floatPropName = ""
