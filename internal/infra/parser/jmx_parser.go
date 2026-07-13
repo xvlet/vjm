@@ -489,6 +489,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if currentTag == "RecordingController" {
 				// Recording Controller is a transparent container.
 				// No specific state tracking is needed, children in hashTree will be parsed naturally.
+			} else if currentTag == "GenericController" {
+				// Simple Controller is a transparent container.
+				// No specific state tracking is needed, children in hashTree will be parsed naturally.
 			} else if currentTag == "RunTime" {
 				pendingRuntimeId = nextLoopId
 				nextLoopId++
