@@ -24,3 +24,13 @@ type URLRewritingModifier struct {
 }
 
 func (*URLRewritingModifier) IsPreProcessor() bool { return true }
+
+// RegExUserParameters represents the JMeter RegEx User Parameters PreProcessor
+type RegExUserParameters struct {
+	Name            string
+	RegexRefName    string
+	ParamNamesGrNr  string
+	ParamValuesGrNr string
+}
+
+func (*RegExUserParameters) IsPreProcessor() bool { return true }

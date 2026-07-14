@@ -1482,6 +1482,37 @@ func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) {
 					}
 				}
 			}
+		case *domain.RegExUserParameters:
+			if p.RegexRefName != "" {
+				matchNrStr := session.Evaluator.Evaluate("${" + p.RegexRefName + "_matchNr}")
+				matchNr, err := strconv.Atoi(matchNrStr)
+				if err == nil && matchNr > 0 {
+					evalUrl := session.Evaluator.Evaluate(sampler.Request.URL)
+					for i := 1; i <= matchNr; i++ {
+						idx := strconv.Itoa(i)
+						nameGrp := p.ParamNamesGrNr
+						if nameGrp == "" {
+							nameGrp = "1"
+						}
+						valGrp := p.ParamValuesGrNr
+						if valGrp == "" {
+							valGrp = "2"
+						}
+						name := session.Evaluator.Evaluate("${" + p.RegexRefName + "_" + idx + "_g" + nameGrp + "}")
+						val := session.Evaluator.Evaluate("${" + p.RegexRefName + "_" + idx + "_g" + valGrp + "}")
+						if name != "" && name != "${"+p.RegexRefName+"_"+idx+"_g"+nameGrp+"}" {
+							sep := "?"
+							if strings.Contains(evalUrl, "?") {
+								sep = "&"
+							}
+							// In JMeter, HTTP Request arguments can also be in the body for POST requests.
+							// For simplicity, we append to the URL query string here.
+							evalUrl += sep + url.QueryEscape(name) + "=" + url.QueryEscape(val)
+						}
+					}
+					sampler.Request.URL = evalUrl
+				}
+			}
 		}
 	}
 }

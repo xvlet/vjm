@@ -126,6 +126,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentHTMLLinkParser *domain.HTMLLinkParser
 	var inURLRewritingModifier bool
 	var currentURLRewritingModifier *domain.URLRewritingModifier
+	var inRegExUserParameters bool
+	var currentRegExUserParameters *domain.RegExUserParameters
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -645,6 +647,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentURLRewritingModifier = &domain.URLRewritingModifier{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "RegExUserParameters" {
+				inRegExUserParameters = true
+				currentRegExUserParameters = &domain.RegExUserParameters{
+					Name:            testNameAttr,
+					ParamNamesGrNr:  "1",
+					ParamValuesGrNr: "2",
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -998,6 +1007,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentURLRewritingModifier = nil
+			} else if se.Name.Local == "RegExUserParameters" {
+				inRegExUserParameters = false
+				if currentRegExUserParameters != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.PreProcessors = append(lastSampler.PreProcessors, currentRegExUserParameters)
+					}
+				}
+				currentRegExUserParameters = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1660,6 +1679,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inURLRewritingModifier && currentURLRewritingModifier != nil {
 						currentURLRewritingModifier.ArgumentName = val
 					}
+				case "RegExUserParameters.regex_ref_name":
+					if inRegExUserParameters && currentRegExUserParameters != nil {
+						currentRegExUserParameters.RegexRefName = val
+					}
+				case "RegExUserParameters.param_names_gr_nr":
+					if inRegExUserParameters && currentRegExUserParameters != nil {
+						currentRegExUserParameters.ParamNamesGrNr = val
+					}
+				case "RegExUserParameters.param_values_gr_nr":
+					if inRegExUserParameters && currentRegExUserParameters != nil {
+						currentRegExUserParameters.ParamValuesGrNr = val
+					}
 				case "classname":
 					if currentBackendListener != nil {
 						currentBackendListener.Classname = val
@@ -1680,6 +1711,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inXMLAssertion
 					_ = inHTMLLinkParser
 					_ = inURLRewritingModifier
+					_ = inRegExUserParameters
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

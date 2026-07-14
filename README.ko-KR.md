@@ -477,7 +477,7 @@ Error Set:
 - [x] **HTML Link Parser** (성능 저하 우려로 사용 비권장, 정규식 추출기 사용 권장)
 - [x] **HTTP URL Re-writing Modifier** (성능 저하 우려로 사용 비권장, 정규식 추출기 사용 권장)
 - ~~[ ] **JDBC PreProcessor**~~ (제외 - JVM/JDBC 종속)
-- [ ] **RegEx User Parameters**
+- [x] **RegEx User Parameters**
 - [ ] **Sample Timeout**
 - ~~[ ] **BeanShell PreProcessor**~~ (제외 - JVM 종속)
 
