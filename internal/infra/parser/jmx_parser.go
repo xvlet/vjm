@@ -142,6 +142,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentResultAction *domain.ResultAction
 	var inXPathExtractor bool
 	var currentXPathExtractor *domain.XPathExtractor
+	var currentResultSaver *domain.ResultSaver
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -729,6 +730,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						plan.ResultCollectors = append(plan.ResultCollectors, currentResultCollector)
 					}
 				}
+			} else if currentTag == "ResultSaver" {
+				if enabledAttr != "false" {
+					currentResultSaver = &domain.ResultSaver{
+						Name: testNameAttr,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.ResultSavers = append(currentThreadGroup.ResultSavers, currentResultSaver)
+					} else {
+						plan.ResultSavers = append(plan.ResultSavers, currentResultSaver)
+					}
+				}
 			} else if currentTag == "BackendListener" {
 				if enabledAttr != "false" {
 					currentBackendListener = &domain.BackendListener{
@@ -1163,6 +1175,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentRandomVariable = nil
 			} else if se.Name.Local == "ResultCollector" || se.Name.Local == "MailerResultCollector" {
 				currentResultCollector = nil
+			} else if se.Name.Local == "ResultSaver" {
+				currentResultSaver = nil
 			} else if se.Name.Local == "BackendListener" {
 				currentBackendListener = nil
 			} else if se.Name.Local == "elementProp" && currentCookie != nil {
@@ -1291,6 +1305,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			case "boolProp":
 				if nameAttr == "LoopController.continue_forever" {
 					pendingLoopContinue = (val == "true")
+					if currentThreadGroup != nil && pendingLoopId == 0 {
+						currentThreadGroup.ContinueForever = pendingLoopContinue
+					}
 				}
 				if nameAttr == "ForeachController.useSeparator" {
 					pendingForEachUseSeparator = (val == "true" || val == "") // default true
@@ -1310,6 +1327,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentURLRewritingModifier.ShouldCache = (val == "true")
 					case "encode":
 						currentURLRewritingModifier.Encode = (val == "true")
+					}
+				}
+				if currentResultSaver != nil {
+					switch nameAttr {
+					case "FileSaver.errorsonly":
+						currentResultSaver.ErrorsOnly = (val == "true")
+					case "FileSaver.successonly":
+						currentResultSaver.SuccessOnly = (val == "true")
+					case "FileSaver.skipsuffix":
+						currentResultSaver.SkipSuffix = (val == "true")
+					case "FileSaver.skipautonumber":
+						currentResultSaver.SkipAutoNumber = (val == "true")
 					}
 				}
 				if currentCSVDataSet != nil {
@@ -1666,6 +1695,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					currentArgName = val
 				case "LoopController.loops":
 					pendingLoopCountExpr = val
+					if currentThreadGroup != nil && pendingLoopId == 0 {
+						if v, err := strconv.Atoi(val); err == nil {
+							currentThreadGroup.Loops = v
+						} else if val == "-1" {
+							currentThreadGroup.Loops = -1
+						}
+					}
 				case "WhileController.condition":
 					pendingWhileCondition = val
 				case "CriticalSectionController.lockName":
@@ -1954,6 +1990,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "classname":
 					if currentBackendListener != nil {
 						currentBackendListener.Classname = val
+					}
+				case "FileSaver.filename":
+					if currentResultSaver != nil {
+						currentResultSaver.FilenamePrefix = val
 					}
 				case "MailerResultCollector.mailer_model.failureSubject":
 					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {

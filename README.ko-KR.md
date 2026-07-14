@@ -445,7 +445,7 @@ Error Set:
 - ~~[ ] **LDAP Request Defaults**~~ (제외 - JVM 종속)
 - ~~[ ] **Login Config Element**~~ (제외 - 비 HTTP 전용)
 - [x] **Random Variable**
-- ~~[ ] **Simple Config Element**~~ (제외 - UDV와 기능 완벽 겹침)
+- ~~[ ] **Simple Config Element**~~ (제외 - UDV와 기능 겹침)
 - ~~[ ] **TCP Sampler Config**~~ (제외 - 비 HTTP)
 
 ### Listeners (리스너)
@@ -461,7 +461,7 @@ Error Set:
 - ~~[ ] **JSR223 Listener**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [x] **Mailer Visualizer** (실제 SMTP 메일 발송 로직 및 파일 출력 지원)
 - [x] **Response Time Graph** (GUI 렌더링 제외, 파일 출력 전용)
-- [ ] **Save Responses to a file**
+- [x] **Save Responses to a file** (파싱 및 개별 파일 저장 지원)
 - [ ] **Simple Data Writer**
 - [ ] **View Results in Table**
 - ~~[ ] **BeanShell Listener**~~ (제외 - JVM 종속)

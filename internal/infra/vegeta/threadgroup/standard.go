@@ -12,6 +12,25 @@ import (
 	"github.com/xvlet/vjm/internal/infra/vegeta/engine"
 )
 
+type MaxHitsPacer struct {
+	Pacer   vegeta.Pacer
+	MaxHits uint64
+}
+
+func (m MaxHitsPacer) Pace(elapsed time.Duration, hits uint64) (time.Duration, bool) {
+	if m.MaxHits > 0 && hits >= m.MaxHits {
+		return 0, true
+	}
+	return m.Pacer.Pace(elapsed, hits)
+}
+
+func (m MaxHitsPacer) Rate(elapsed time.Duration) float64 {
+	if pr, ok := m.Pacer.(interface{ Rate(time.Duration) float64 }); ok {
+		return pr.Rate(elapsed)
+	}
+	return 0
+}
+
 type StandardRunner struct{}
 
 func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator) error {
@@ -47,6 +66,19 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 				} else {
 					pacer = vegeta.ConstantPacer{Freq: int(freq), Per: time.Second}
 				}
+			}
+		}
+
+		if len(plan.ThreadGroups) > 0 {
+			tg := plan.ThreadGroups[0]
+			if !tg.ContinueForever && tg.Loops > 0 {
+				numThreads := tg.NumThreads
+				if numThreads <= 0 {
+					numThreads = 1
+				}
+				maxHits := uint64(numThreads * tg.Loops)
+				pacer = MaxHitsPacer{Pacer: pacer, MaxHits: maxHits}
+				dur = 0 // Run until MaxHits is reached
 			}
 		}
 	}

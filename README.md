@@ -446,7 +446,7 @@ Error Set:
 - ~~[ ] **LDAP Request Defaults**~~ (Excluded - JVM dependent)
 - ~~[ ] **Login Config Element**~~ (Excluded - Non HTTP)
 - [x] **Random Variable**
-- ~~[ ] **Simple Config Element**~~ (Excluded - fully overlaps with UDV)
+- ~~[ ] **Simple Config Element**~~ (Excluded - overlaps with UDV)
 - ~~[ ] **TCP Sampler Config**~~ (Excluded - non-HTTP)
 
 ### Listeners
@@ -462,7 +462,7 @@ Error Set:
 - ~~[ ] **JSR223 Listener**~~ (Excluded - JVM/Groovy script dependent)
 - [x] **Mailer Visualizer** (Implemented: File output & actual SMTP email sending)
 - [x] **Response Time Graph** (File output only)
-- [ ] **Save Responses to a file**
+- [x] **Save Responses to a file** (Parsed and actual individual file saving supported)
 - [ ] **Simple Data Writer**
 - [ ] **View Results in Table**
 - ~~[ ] **BeanShell Listener**~~ (Excluded - JVM dependent)

@@ -112,6 +112,15 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 		}
 	}
 
+	// Trigger Result Savers
+	allSavers := append([]*domain.ResultSaver{}, plan.ResultSavers...)
+	for _, tg := range plan.ThreadGroups {
+		allSavers = append(allSavers, tg.ResultSavers...)
+	}
+	if err := SaveResponsesIfNeeded(config.ResultBinPath, allSavers); err != nil {
+		log.Printf("[WARNING] ResultSaver execution failed: %v", err)
+	}
+
 	// Trigger Mailer Visualizers if any thresholds were exceeded
 	allCollectors := append([]*domain.ResultCollector{}, plan.ResultCollectors...)
 	for _, tg := range plan.ThreadGroups {

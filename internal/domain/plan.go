@@ -73,6 +73,16 @@ type BackendListener struct {
 	Arguments map[string]string
 }
 
+// ResultSaver represents a JMeter Save Responses to a file listener
+type ResultSaver struct {
+	Name           string
+	FilenamePrefix string
+	ErrorsOnly     bool
+	SuccessOnly    bool
+	SkipSuffix     bool
+	SkipAutoNumber bool
+}
+
 // Cookie represents a user-defined cookie in the CookieManager.
 type Cookie struct {
 	Name   string
@@ -144,6 +154,7 @@ type TestPlan struct {
 	UserDefinedVariables map[string]string // UDV or User Parameters at Test Plan level
 	CSVDataSets          []*CSVDataSet
 	ResultCollectors     []*ResultCollector
+	ResultSavers         []*ResultSaver
 	Summarisers          []*Summariser
 	BackendListeners     []*BackendListener
 	CookieManager        *CookieManager
@@ -213,6 +224,8 @@ type ThreadGroup struct {
 	NumThreads             int    // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
 	RampUp                 int    // TODO: seconds to ramp up to full load
 	Duration               int    // TODO: total duration per step
+	Loops                  int    // Parsed from LoopController.loops
+	ContinueForever        bool   // Parsed from LoopController.continue_forever
 	Samplers               []*Sampler
 	SteppingConfig         *SteppingConfig
 	ConcurrencyConfig      *ConcurrencyConfig
@@ -223,6 +236,7 @@ type ThreadGroup struct {
 	Timers                 []*Timer
 	CSVDataSets            []*CSVDataSet
 	ResultCollectors       []*ResultCollector
+	ResultSavers           []*ResultSaver
 	Summarisers            []*Summariser
 	BackendListeners       []*BackendListener
 	CookieManager          *CookieManager
