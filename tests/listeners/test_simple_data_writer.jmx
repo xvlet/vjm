@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Simple Data Writer" enabled="true">
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group">
+        <intProp name="ThreadGroup.num_threads">1</intProp>
+        <intProp name="ThreadGroup.ramp_time">1</intProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">2</stringProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="HTTP Request">
+          <stringProp name="HTTPSampler.domain">localhost</stringProp>
+          <stringProp name="HTTPSampler.port">58080</stringProp>
+          <stringProp name="HTTPSampler.path">/test</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+      </hashTree>
+      
+      <!-- Log All -->
+      <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="Simple Data Writer All" enabled="true">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <boolProp name="ResultCollector.success_only_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration"/>
+        </objProp>
+        <stringProp name="filename">writer_all.csv</stringProp>
+      </ResultCollector>
+      <hashTree/>
+
+      <!-- Log Errors Only -->
+      <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="Simple Data Writer Errors" enabled="true">
+        <boolProp name="ResultCollector.error_logging">true</boolProp>
+        <boolProp name="ResultCollector.success_only_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration"/>
+        </objProp>
+        <stringProp name="filename">writer_err.csv</stringProp>
+      </ResultCollector>
+      <hashTree/>
+
+      <!-- Log Success Only -->
+      <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="Simple Data Writer Success" enabled="true">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <boolProp name="ResultCollector.success_only_logging">true</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration"/>
+        </objProp>
+        <stringProp name="filename">writer_succ.csv</stringProp>
+      </ResultCollector>
+      <hashTree/>
+
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

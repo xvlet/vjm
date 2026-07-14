@@ -126,6 +126,12 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 	for _, tg := range plan.ThreadGroups {
 		allCollectors = append(allCollectors, tg.ResultCollectors...)
 	}
+
+	// Trigger Simple Data Writer (ResultCollectors with specific Filename)
+	if err := WriteCustomJTLsIfNeeded(config.ResultBinPath, allCollectors); err != nil {
+		log.Printf("[WARNING] ResultWriter execution failed: %v", err)
+	}
+
 	if err := SendMailsIfNeeded(config.ResultJtlPath, allCollectors); err != nil {
 		log.Printf("[WARNING] Mailer execution failed: %v", err)
 	}

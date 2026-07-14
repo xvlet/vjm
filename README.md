@@ -463,7 +463,7 @@ Error Set:
 - [x] **Mailer Visualizer** (Implemented: File output & actual SMTP email sending)
 - [x] **Response Time Graph** (File output only)
 - [x] **Save Responses to a file** (Parsed and actual individual file saving supported)
-- [ ] **Simple Data Writer**
+- [x] **Simple Data Writer** (Supports parsing and JTL file output)
 - [ ] **View Results in Table**
 - ~~[ ] **BeanShell Listener**~~ (Excluded - JVM dependent)
 

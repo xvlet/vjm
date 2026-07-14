@@ -1431,6 +1431,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if currentResultCollector != nil && nameAttr == "ResultCollector.error_logging" {
 					currentResultCollector.ErrorLogging = (val == "true")
 				}
+				if currentResultCollector != nil && nameAttr == "ResultCollector.success_only_logging" {
+					currentResultCollector.SuccessOnlyLogging = (val == "true")
+				}
 				if currentBoundaryExtractor != nil && nameAttr == "BoundaryExtractor.default_empty_value" {
 					currentBoundaryExtractor.DefaultEmptyValue = (val == "true")
 				}

@@ -55,10 +55,11 @@ type MailerModel struct {
 
 // ResultCollector represents a JMeter Listener that writes results to a file
 type ResultCollector struct {
-	Name         string
-	Filename     string
-	ErrorLogging bool // true if "ResultCollector.error_logging" is true
-	MailerModel  *MailerModel
+	Name               string
+	Filename           string
+	ErrorLogging       bool // true if "ResultCollector.error_logging" is true
+	SuccessOnlyLogging bool // true if "ResultCollector.success_only_logging" is true
+	MailerModel        *MailerModel
 }
 
 // Summariser represents a JMeter Generate Summary Results Listener
