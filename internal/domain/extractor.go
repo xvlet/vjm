@@ -9,6 +9,7 @@ import (
 
 	"bytes"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/jmespath/go-jmespath"
 	"github.com/oliveagle/jsonpath"
 )
 
@@ -299,6 +300,82 @@ func (e *HtmlExtractor) Extract(body []byte) (string, bool) {
 }
 
 func (e *HtmlExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
+	if e.MatchNo != -1 {
+		return nil, false
+	}
+
+	results, ok := e.extractAll(body)
+	if !ok || len(results) == 0 {
+		return nil, false
+	}
+
+	multi := make(map[string]string)
+	multi[e.ReferenceName+"_matchNr"] = strconv.Itoa(len(results))
+	for i, v := range results {
+		multi[e.ReferenceName+"_"+strconv.Itoa(i+1)] = v
+	}
+
+	return multi, true
+}
+
+// JMESPathExtractor implementation
+type JMESPathExtractor struct {
+	ReferenceName   string
+	JmesPathExpr    string
+	MatchNo         int
+	DefaultValueStr string
+}
+
+func (e *JMESPathExtractor) RefName() string      { return e.ReferenceName }
+func (e *JMESPathExtractor) DefaultValue() string { return e.DefaultValueStr }
+
+func (e *JMESPathExtractor) extractAll(body []byte) ([]string, bool) {
+	var jsonData interface{}
+	if err := json.Unmarshal(body, &jsonData); err != nil {
+		return nil, false
+	}
+
+	result, err := jmespath.Search(e.JmesPathExpr, jsonData)
+	if err != nil || result == nil {
+		return nil, false
+	}
+
+	var strResults []string
+	if sliceRes, ok := result.([]interface{}); ok {
+		for _, item := range sliceRes {
+			strResults = append(strResults, stringifyJSON(item))
+		}
+	} else {
+		strResults = append(strResults, stringifyJSON(result))
+	}
+
+	if len(strResults) == 0 {
+		return nil, false
+	}
+	return strResults, true
+}
+
+func (e *JMESPathExtractor) Extract(body []byte) (string, bool) {
+	results, ok := e.extractAll(body)
+	if !ok || len(results) == 0 {
+		return "", false
+	}
+
+	matchIdx := e.MatchNo - 1
+	switch e.MatchNo {
+	case 0:
+		matchIdx = rand.IntN(len(results))
+	case -1:
+		return "", false // Should be handled by ExtractMulti
+	}
+
+	if matchIdx >= 0 && matchIdx < len(results) {
+		return results[matchIdx], true
+	}
+	return "", false
+}
+
+func (e *JMESPathExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
 	if e.MatchNo != -1 {
 		return nil, false
 	}

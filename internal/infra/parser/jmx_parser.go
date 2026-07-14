@@ -132,6 +132,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentSampleTimeout *domain.SampleTimeout
 	var inHtmlExtractor bool
 	var currentHtmlExtractor *domain.HtmlExtractor
+	var inJMESPathExtractor bool
+	var currentJMESPathExtractor *domain.JMESPathExtractor
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -601,6 +603,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentHtmlExtractor = &domain.HtmlExtractor{
 					MatchNo: 1, // Default match number is 1 if not specified
 				}
+			} else if currentTag == "JMESPathExtractor" {
+				inJMESPathExtractor = true
+				currentJMESPathExtractor = &domain.JMESPathExtractor{
+					MatchNo: 1,
+				}
 			} else if currentTag == "ResponseAssertion" {
 				inResponseAssertion = true
 				currentResponseAssertion = &domain.ResponseAssertion{
@@ -902,6 +909,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentHtmlExtractor = nil
+			} else if se.Name.Local == "JMESPathExtractor" {
+				inJMESPathExtractor = false
+				if currentJMESPathExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentJMESPathExtractor)
+					}
+				}
+				currentJMESPathExtractor = nil
 			} else if se.Name.Local == "ResponseAssertion" {
 				inResponseAssertion = false
 				if currentResponseAssertion != nil && currentThreadGroup != nil {
@@ -1607,6 +1623,24 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inHtmlExtractor && currentHtmlExtractor != nil {
 						currentHtmlExtractor.DefaultValueStr = val
 					}
+				case "JMESPathExtractor.referenceName":
+					if inJMESPathExtractor && currentJMESPathExtractor != nil {
+						currentJMESPathExtractor.ReferenceName = val
+					}
+				case "JMESPathExtractor.jmesPathExpr":
+					if inJMESPathExtractor && currentJMESPathExtractor != nil {
+						currentJMESPathExtractor.JmesPathExpr = val
+					}
+				case "JMESPathExtractor.matchNumber":
+					if inJMESPathExtractor && currentJMESPathExtractor != nil {
+						if m, err := strconv.Atoi(val); err == nil {
+							currentJMESPathExtractor.MatchNo = m
+						}
+					}
+				case "JMESPathExtractor.defaultValue":
+					if inJMESPathExtractor && currentJMESPathExtractor != nil {
+						currentJMESPathExtractor.DefaultValueStr = val
+					}
 				case "RegexExtractor.refname":
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.ReferenceName = val
@@ -1777,6 +1811,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inRegExUserParameters
 					_ = inSampleTimeout
 					_ = inHtmlExtractor
+					_ = inJMESPathExtractor
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

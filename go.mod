@@ -6,6 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/antchfx/xmlquery v1.5.1
 	github.com/expr-lang/expr v1.17.8
+	github.com/jmespath/go-jmespath v0.4.0
 	github.com/oliveagle/jsonpath v0.1.4
 	github.com/tsenart/vegeta/v12 v12.13.0
 )
