@@ -3,7 +3,9 @@ package engine
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -1384,6 +1386,14 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 	case *domain.DurationAssertion:
 		// duration is not passed to evaluateAssertion currently.
 		// We pass for now until the engine is upgraded to pass sample latency.
+		return nil
+
+	case *domain.MD5HexAssertion:
+		hash := md5.Sum(bodyBytes)
+		actualHex := hex.EncodeToString(hash[:])
+		if !strings.EqualFold(actualHex, a.ExpectedMD5Hex) {
+			return fmt.Errorf("MD5HexAssertion failed: expected '%s', got '%s'", a.ExpectedMD5Hex, actualHex)
+		}
 		return nil
 	}
 	return nil

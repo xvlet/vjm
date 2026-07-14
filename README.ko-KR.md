@@ -505,7 +505,7 @@ Error Set:
 - [x] **Compare Assertion**
 - [x] **Duration Assertion**
 - ~~[ ] **HTML Assertion**~~ (제외 - JTidy(Java) 라이브러리 종속)
-- [ ] **MD5Hex Assertion**
+- [x] **MD5Hex Assertion**
 - [ ] **SMIME Assertion**
 - [ ] **XML Assertion**
 - ~~[ ] **XML Schema Assertion**~~ (제외 - 완벽한 XSD 검증을 위한 CGO/외부 라이브러리 종속)

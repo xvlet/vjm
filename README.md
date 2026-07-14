@@ -506,7 +506,7 @@ Error Set:
 - [x] **Compare Assertion**
 - [x] **Duration Assertion**
 - ~~[ ] **HTML Assertion**~~ (Excluded - JTidy Java library dependent)
-- [ ] **MD5Hex Assertion**
+- [x] **MD5Hex Assertion**
 - [ ] **SMIME Assertion**
 - [ ] **XML Assertion**
 - ~~[ ] **XML Schema Assertion**~~ (Excluded - CGO/external library dependent for full XSD support)

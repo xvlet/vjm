@@ -60,3 +60,10 @@ type DurationAssertion struct {
 }
 
 func (*DurationAssertion) IsAssertion() bool { return true }
+
+type MD5HexAssertion struct {
+	Name           string
+	ExpectedMD5Hex string // "MD5HexAssertion.size"
+}
+
+func (*MD5HexAssertion) IsAssertion() bool { return true }

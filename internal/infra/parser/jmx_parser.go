@@ -112,13 +112,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJSONExtractor *domain.JSONExtractor
 	var currentRegexExtractor *domain.RegexExtractor
 
-	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion, inDurationAssertion bool
+	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion, inDurationAssertion, inMD5HexAssertion bool
 	var currentResponseAssertion *domain.ResponseAssertion
 	var currentJSONAssertion *domain.JSONAssertion
 	var currentSizeAssertion *domain.SizeAssertion
 	var currentXPathAssertion *domain.XPathAssertion
 	var currentCompareAssertion *domain.CompareAssertion
 	var currentDurationAssertion *domain.DurationAssertion
+	var currentMD5HexAssertion *domain.MD5HexAssertion
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -613,6 +614,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentDurationAssertion = &domain.DurationAssertion{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "MD5HexAssertion" {
+				inMD5HexAssertion = true
+				currentMD5HexAssertion = &domain.MD5HexAssertion{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -910,6 +916,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentDurationAssertion = nil
+			} else if se.Name.Local == "MD5HexAssertion" {
+				inMD5HexAssertion = false
+				if currentMD5HexAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentMD5HexAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentMD5HexAssertion)
+					}
+				}
+				currentMD5HexAssertion = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1243,6 +1261,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							currentDurationAssertion.Duration = v
 						}
 					}
+				case "MD5HexAssertion.size":
+					if currentMD5HexAssertion != nil {
+						currentMD5HexAssertion.ExpectedMD5Hex = val
+					}
 				case "JSON_PATH":
 					if currentJSONAssertion != nil {
 						currentJSONAssertion.JSONPath = val
@@ -1539,6 +1561,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inXPathAssertion
 					_ = inCompareAssertion
 					_ = inDurationAssertion
+					_ = inMD5HexAssertion
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
