@@ -39,11 +39,26 @@ type CSVDataSet struct {
 	ShareMode       string
 }
 
+// MailerModel represents the SMTP configuration for Mailer Visualizer
+type MailerModel struct {
+	SuccessLimit   int
+	FailureLimit   int
+	SuccessSubject string
+	FailureSubject string
+	FromAddress    string
+	ToAddress      string
+	SmtpHost       string
+	SmtpPort       string
+	Username       string
+	Password       string
+}
+
 // ResultCollector represents a JMeter Listener that writes results to a file
 type ResultCollector struct {
 	Name         string
 	Filename     string
 	ErrorLogging bool // true if "ResultCollector.error_logging" is true
+	MailerModel  *MailerModel
 }
 
 // Summariser represents a JMeter Generate Summary Results Listener

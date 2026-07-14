@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+    <hashTree>
+        <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Mailer Visualizer"
+            enabled="true">
+            <elementProp name="TestPlan.user_defined_variables" elementType="Arguments">
+                <collectionProp name="Arguments.arguments" />
+            </elementProp>
+        </TestPlan>
+        <hashTree>
+            <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group">
+                <intProp name="ThreadGroup.num_threads">1</intProp>
+                <intProp name="ThreadGroup.ramp_time">1</intProp>
+                <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+                    <stringProp name="LoopController.loops">1</stringProp>
+                </elementProp>
+            </ThreadGroup>
+            <hashTree>
+                <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy"
+                    testname="HTTP Request">
+                    <stringProp name="HTTPSampler.domain">localhost</stringProp>
+                    <stringProp name="HTTPSampler.port">58080</stringProp>
+                    <stringProp name="HTTPSampler.path">/test</stringProp>
+                    <stringProp name="HTTPSampler.method">GET</stringProp>
+                </HTTPSamplerProxy>
+                <hashTree />
+            </hashTree>
+            <MailerResultCollector guiclass="MailerVisualizer" testclass="MailerResultCollector"
+                testname="Mailer Visualizer" enabled="true">
+                <intProp name="MailerResultCollector.mailer_model.successLimit">2</intProp>
+                <intProp name="MailerResultCollector.mailer_model.failureLimit">2</intProp>
+                <stringProp name="MailerResultCollector.mailer_model.failureSubject">Test Failed</stringProp>
+                <stringProp name="MailerResultCollector.mailer_model.fromAddress">sender@test.com</stringProp>
+                <stringProp name="MailerResultCollector.mailer_model.smtpHost">smtp.test.com</stringProp>
+                <stringProp name="MailerResultCollector.mailer_model.successSubject">Test Succeeded</stringProp>
+                <stringProp name="MailerResultCollector.mailer_model.addressie">receiver@test.com</stringProp>
+                <stringProp name="MailerResultCollector.mailer_model.smtpPort">587</stringProp>
+                <stringProp name="MailerResultCollector.mailer_model.login">user</stringProp>
+                <stringProp name="MailerResultCollector.mailer_model.password">pass123</stringProp>
+                <boolProp name="ResultCollector.error_logging">false</boolProp>
+                <objProp>
+                    <name>saveConfig</name>
+                    <value class="SampleSaveConfiguration">
+                        <time>true</time>
+                    </value>
+                </objProp>
+                <stringProp name="filename">mailer_results.jtl</stringProp>
+            </MailerResultCollector>
+            <hashTree />
+        </hashTree>
+    </hashTree>
+</jmeterTestPlan>

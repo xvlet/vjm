@@ -715,10 +715,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						plan.CSVDataSets = append(plan.CSVDataSets, currentCSVDataSet)
 					}
 				}
-			} else if currentTag == "ResultCollector" {
+			} else if currentTag == "ResultCollector" || currentTag == "MailerResultCollector" {
 				if enabledAttr != "false" {
 					currentResultCollector = &domain.ResultCollector{
 						Name: testNameAttr,
+					}
+					if currentTag == "MailerResultCollector" {
+						currentResultCollector.MailerModel = &domain.MailerModel{}
 					}
 					if currentThreadGroup != nil {
 						currentThreadGroup.ResultCollectors = append(currentThreadGroup.ResultCollectors, currentResultCollector)
@@ -1158,7 +1161,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentAuthManager = nil
 			} else if se.Name.Local == "RandomVariableConfig" {
 				currentRandomVariable = nil
-			} else if se.Name.Local == "ResultCollector" {
+			} else if se.Name.Local == "ResultCollector" || se.Name.Local == "MailerResultCollector" {
 				currentResultCollector = nil
 			} else if se.Name.Local == "BackendListener" {
 				currentBackendListener = nil
@@ -1450,15 +1453,27 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentSizeAssertion.Operator = v
 					}
 				}
+				if currentCompareAssertion != nil && nameAttr == "CompareAssertion.compareTime" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentCompareAssertion.CompareTime = v
+					}
+				}
+				if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+					switch nameAttr {
+					case "MailerResultCollector.mailer_model.successLimit":
+						if v, err := strconv.Atoi(val); err == nil {
+							currentResultCollector.MailerModel.SuccessLimit = v
+						}
+					case "MailerResultCollector.mailer_model.failureLimit":
+						if v, err := strconv.Atoi(val); err == nil {
+							currentResultCollector.MailerModel.FailureLimit = v
+						}
+					}
+				}
 			case "longProp":
 				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
 					if nameAttr == "timeoutInMs" {
 						currentTimer.TimeoutInMs = val
-					}
-				}
-				if currentCompareAssertion != nil && nameAttr == "CompareAssertion.compareTime" {
-					if v, err := strconv.Atoi(val); err == nil {
-						currentCompareAssertion.CompareTime = v
 					}
 				}
 			case "stringProp":
@@ -1939,6 +1954,38 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "classname":
 					if currentBackendListener != nil {
 						currentBackendListener.Classname = val
+					}
+				case "MailerResultCollector.mailer_model.failureSubject":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.FailureSubject = val
+					}
+				case "MailerResultCollector.mailer_model.successSubject":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.SuccessSubject = val
+					}
+				case "MailerResultCollector.mailer_model.fromAddress":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.FromAddress = val
+					}
+				case "MailerResultCollector.mailer_model.addressie":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.ToAddress = val
+					}
+				case "MailerResultCollector.mailer_model.smtpHost":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.SmtpHost = val
+					}
+				case "MailerResultCollector.mailer_model.smtpPort":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.SmtpPort = val
+					}
+				case "MailerResultCollector.mailer_model.login":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.Username = val
+					}
+				case "MailerResultCollector.mailer_model.password":
+					if currentResultCollector != nil && currentResultCollector.MailerModel != nil {
+						currentResultCollector.MailerModel.Password = val
 					}
 				default:
 					if inResponseAssertion && currentResponseAssertion != nil {

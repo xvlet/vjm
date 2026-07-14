@@ -112,6 +112,15 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 		}
 	}
 
+	// Trigger Mailer Visualizers if any thresholds were exceeded
+	allCollectors := append([]*domain.ResultCollector{}, plan.ResultCollectors...)
+	for _, tg := range plan.ThreadGroups {
+		allCollectors = append(allCollectors, tg.ResultCollectors...)
+	}
+	if err := SendMailsIfNeeded(config.ResultJtlPath, allCollectors); err != nil {
+		log.Printf("[WARNING] Mailer execution failed: %v", err)
+	}
+
 	if config.ReportDirPath != "" {
 		log.Println("[Usecase] Generating HTML Report...")
 		err = u.reporter.GenerateHTML(config.ResultJtlPath, config.ReportDirPath, 1000)

@@ -459,7 +459,7 @@ Error Set:
 - [x] **Generate Summary Results** (동작은 vjm/Vegeta 기본 요약 출력으로 대체)
 - [x] **Graph Results** (GUI 렌더링 제외, 파일 출력 전용)
 - ~~[ ] **JSR223 Listener**~~ (제외 - JVM/Groovy 스크립트 종속)
-- [ ] **Mailer Visualizer**
+- [x] **Mailer Visualizer** (실제 SMTP 메일 발송 로직 및 파일 출력 완벽 지원)
 - [ ] **Response Time Graph**
 - [ ] **Save Responses to a file**
 - [ ] **Simple Data Writer**
