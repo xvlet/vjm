@@ -134,6 +134,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentHtmlExtractor *domain.HtmlExtractor
 	var inJMESPathExtractor bool
 	var currentJMESPathExtractor *domain.JMESPathExtractor
+	var inBoundaryExtractor bool
+	var currentBoundaryExtractor *domain.BoundaryExtractor
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -608,6 +610,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentJMESPathExtractor = &domain.JMESPathExtractor{
 					MatchNo: 1,
 				}
+			} else if currentTag == "BoundaryExtractor" {
+				inBoundaryExtractor = true
+				currentBoundaryExtractor = &domain.BoundaryExtractor{
+					MatchNo: 1,
+				}
 			} else if currentTag == "ResponseAssertion" {
 				inResponseAssertion = true
 				currentResponseAssertion = &domain.ResponseAssertion{
@@ -918,6 +925,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentJMESPathExtractor = nil
+			} else if se.Name.Local == "BoundaryExtractor" {
+				inBoundaryExtractor = false
+				if currentBoundaryExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentBoundaryExtractor)
+					}
+				}
+				currentBoundaryExtractor = nil
 			} else if se.Name.Local == "ResponseAssertion" {
 				inResponseAssertion = false
 				if currentResponseAssertion != nil && currentThreadGroup != nil {
@@ -1641,6 +1657,32 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inJMESPathExtractor && currentJMESPathExtractor != nil {
 						currentJMESPathExtractor.DefaultValueStr = val
 					}
+				case "BoundaryExtractor.refname":
+					if inBoundaryExtractor && currentBoundaryExtractor != nil {
+						currentBoundaryExtractor.ReferenceName = val
+					}
+				case "BoundaryExtractor.lboundary":
+					if inBoundaryExtractor && currentBoundaryExtractor != nil {
+						currentBoundaryExtractor.LBoundary = val
+					}
+				case "BoundaryExtractor.rboundary":
+					if inBoundaryExtractor && currentBoundaryExtractor != nil {
+						currentBoundaryExtractor.RBoundary = val
+					}
+				case "BoundaryExtractor.match_number":
+					if inBoundaryExtractor && currentBoundaryExtractor != nil {
+						if m, err := strconv.Atoi(val); err == nil {
+							currentBoundaryExtractor.MatchNo = m
+						}
+					}
+				case "BoundaryExtractor.default":
+					if inBoundaryExtractor && currentBoundaryExtractor != nil {
+						currentBoundaryExtractor.DefaultValueStr = val
+					}
+				case "BoundaryExtractor.default_empty_value":
+					if inBoundaryExtractor && currentBoundaryExtractor != nil {
+						currentBoundaryExtractor.DefaultEmptyValue = (val == "true")
+					}
 				case "RegexExtractor.refname":
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.ReferenceName = val
@@ -1812,6 +1854,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inSampleTimeout
 					_ = inHtmlExtractor
 					_ = inJMESPathExtractor
+					_ = inBoundaryExtractor
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

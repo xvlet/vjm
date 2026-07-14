@@ -486,7 +486,7 @@ Error Set:
 - [x] **Regular Expression Extractor**
 - [x] **CSS Selector Extractor**
 - [x] **JSON JMESPath Extractor**
-- [ ] **Boundary Extractor**
+- [x] **Boundary Extractor**
 - ~~[ ] **JSR223 PostProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [ ] **Debug PostProcessor**
 - ~~[ ] **JDBC PostProcessor**~~ (제외 - JVM/JDBC 종속)

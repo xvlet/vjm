@@ -393,3 +393,91 @@ func (e *JMESPathExtractor) ExtractMulti(body []byte) (map[string]string, bool) 
 
 	return multi, true
 }
+
+// BoundaryExtractor implementation
+type BoundaryExtractor struct {
+	ReferenceName     string
+	LBoundary         string
+	RBoundary         string
+	MatchNo           int
+	DefaultValueStr   string
+	DefaultEmptyValue bool
+}
+
+func (e *BoundaryExtractor) RefName() string { return e.ReferenceName }
+func (e *BoundaryExtractor) DefaultValue() string {
+	if e.DefaultEmptyValue {
+		return ""
+	}
+	return e.DefaultValueStr
+}
+
+func (e *BoundaryExtractor) extractAll(body []byte) ([]string, bool) {
+	if e.LBoundary == "" || e.RBoundary == "" {
+		return nil, false
+	}
+
+	content := string(body)
+	var results []string
+
+	for {
+		startIdx := strings.Index(content, e.LBoundary)
+		if startIdx == -1 {
+			break
+		}
+		// Move content pointer to just after the LBoundary
+		content = content[startIdx+len(e.LBoundary):]
+
+		endIdx := strings.Index(content, e.RBoundary)
+		if endIdx == -1 {
+			break
+		}
+
+		results = append(results, content[:endIdx])
+		content = content[endIdx+len(e.RBoundary):]
+	}
+
+	if len(results) == 0 {
+		return nil, false
+	}
+	return results, true
+}
+
+func (e *BoundaryExtractor) Extract(body []byte) (string, bool) {
+	results, ok := e.extractAll(body)
+	if !ok || len(results) == 0 {
+		return "", false
+	}
+
+	matchIdx := e.MatchNo - 1
+	switch e.MatchNo {
+	case 0:
+		matchIdx = rand.IntN(len(results))
+	case -1:
+		return "", false // Handled by ExtractMulti
+	}
+
+	if matchIdx >= 0 && matchIdx < len(results) {
+		return results[matchIdx], true
+	}
+	return "", false
+}
+
+func (e *BoundaryExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
+	if e.MatchNo != -1 {
+		return nil, false
+	}
+
+	results, ok := e.extractAll(body)
+	if !ok || len(results) == 0 {
+		return nil, false
+	}
+
+	multi := make(map[string]string)
+	multi[e.ReferenceName+"_matchNr"] = strconv.Itoa(len(results))
+	for i, v := range results {
+		multi[e.ReferenceName+"_"+strconv.Itoa(i+1)] = v
+	}
+
+	return multi, true
+}
