@@ -3,7 +3,8 @@
 APP_NAME = vjm
 CMD_PATH = ./cmd/vjm/main.go
 BASE_DIR = build
-LDFLAGS = -w -s
+VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+LDFLAGS = -w -s -X main.Version=$(VERSION)
 
 .PHONY: all clean linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 windows_amd64 windows_arm64 aix_ppc64
 

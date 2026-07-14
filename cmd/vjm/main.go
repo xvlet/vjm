@@ -18,6 +18,8 @@ import (
 	"github.com/xvlet/vjm/internal/usecase"
 )
 
+var Version = "dev"
+
 // multiFlag allows a flag to be specified multiple times
 type multiFlag []string
 
@@ -56,7 +58,7 @@ func main() {
 	flag.BoolVar(forceCLI, "f", false, "Force CLI rate (alias for -force-cli)")
 
 	flag.Usage = func() {
-		fmt.Println("Vegeta JMeter Engine (vjm) v1.0")
+		fmt.Printf("Vegeta JMeter Engine (vjm) %s\n", Version)
 		fmt.Println("A high-performance HTTP load testing tool bridging JMeter templates and Vegeta core.")
 		fmt.Println()
 		fmt.Println("Usage: vjm -t <plan.jmx> [-p props1.properties] [-p props2.properties] -r 3000 -d 60s")
