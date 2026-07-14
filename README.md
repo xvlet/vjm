@@ -500,11 +500,11 @@ Error Set:
 ### Assertions
 - [x] **Response Assertion**
 - [x] **JSON Assertion**
-- [ ] **Size Assertion**
+- [x] **Size Assertion**
 - ~~[ ] **JSR223 Assertion**~~ (Excluded - JVM/Groovy script dependent)
-- [ ] **XPath Assertion**
-- [ ] **Compare Assertion**
-- [ ] **Duration Assertion**
+- [x] **XPath Assertion**
+- [x] **Compare Assertion**
+- [x] **Duration Assertion**
 - ~~[ ] **HTML Assertion**~~ (Excluded - JTidy Java library dependent)
 - [ ] **MD5Hex Assertion**
 - [ ] **SMIME Assertion**

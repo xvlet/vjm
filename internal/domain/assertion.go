@@ -53,3 +53,10 @@ type CompareAssertion struct {
 }
 
 func (*CompareAssertion) IsAssertion() bool { return true }
+
+type DurationAssertion struct {
+	Name     string
+	Duration int // "DurationAssertion.duration"
+}
+
+func (*DurationAssertion) IsAssertion() bool { return true }

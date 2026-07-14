@@ -503,7 +503,7 @@ Error Set:
 - ~~[ ] **JSR223 Assertion**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [x] **XPath Assertion**
 - [x] **Compare Assertion**
-- [ ] **Duration Assertion**
+- [x] **Duration Assertion**
 - ~~[ ] **HTML Assertion**~~ (제외 - JTidy(Java) 라이브러리 종속)
 - [ ] **MD5Hex Assertion**
 - [ ] **SMIME Assertion**

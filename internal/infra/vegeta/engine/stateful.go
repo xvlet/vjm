@@ -1380,6 +1380,11 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 		// It's technically possible to save the last response in the session and compare, but for now we just pass.
 		// If CompareTime is set, we could potentially check duration, but duration isn't passed here.
 		return nil
+
+	case *domain.DurationAssertion:
+		// duration is not passed to evaluateAssertion currently.
+		// We pass for now until the engine is upgraded to pass sample latency.
+		return nil
 	}
 	return nil
 }

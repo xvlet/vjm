@@ -112,12 +112,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJSONExtractor *domain.JSONExtractor
 	var currentRegexExtractor *domain.RegexExtractor
 
-	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion bool
+	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion, inDurationAssertion bool
 	var currentResponseAssertion *domain.ResponseAssertion
 	var currentJSONAssertion *domain.JSONAssertion
 	var currentSizeAssertion *domain.SizeAssertion
 	var currentXPathAssertion *domain.XPathAssertion
 	var currentCompareAssertion *domain.CompareAssertion
+	var currentDurationAssertion *domain.DurationAssertion
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -607,6 +608,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentCompareAssertion = &domain.CompareAssertion{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "DurationAssertion" {
+				inDurationAssertion = true
+				currentDurationAssertion = &domain.DurationAssertion{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -892,6 +898,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentCompareAssertion = nil
+			} else if se.Name.Local == "DurationAssertion" {
+				inDurationAssertion = false
+				if currentDurationAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentDurationAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentDurationAssertion)
+					}
+				}
+				currentDurationAssertion = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1219,6 +1237,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if currentXPathAssertion != nil {
 						currentXPathAssertion.XPath = val
 					}
+				case "DurationAssertion.duration":
+					if currentDurationAssertion != nil {
+						if v, err := strconv.Atoi(val); err == nil {
+							currentDurationAssertion.Duration = v
+						}
+					}
 				case "JSON_PATH":
 					if currentJSONAssertion != nil {
 						currentJSONAssertion.JSONPath = val
@@ -1514,6 +1538,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inSizeAssertion
 					_ = inXPathAssertion
 					_ = inCompareAssertion
+					_ = inDurationAssertion
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
