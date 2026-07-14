@@ -67,3 +67,16 @@ type MD5HexAssertion struct {
 }
 
 func (*MD5HexAssertion) IsAssertion() bool { return true }
+
+type SMIMEAssertion struct {
+	Name               string
+	VerifySignature    bool   // "SMIMEAssertion.verifySignature"
+	NotBefore          bool   // "SMIMEAssertion.notBefore"
+	NotAfter           bool   // "SMIMEAssertion.notAfter"
+	SignerDN           string // "SMIMEAssertion.signerDN"
+	SignerSerialNumber string // "SMIMEAssertion.signerSerialNumber"
+	SignerEmail        string // "SMIMEAssertion.signerEmail"
+	IssuerDN           string // "SMIMEAssertion.issuerDN"
+}
+
+func (*SMIMEAssertion) IsAssertion() bool { return true }

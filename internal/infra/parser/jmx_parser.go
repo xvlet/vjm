@@ -112,7 +112,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJSONExtractor *domain.JSONExtractor
 	var currentRegexExtractor *domain.RegexExtractor
 
-	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion, inDurationAssertion, inMD5HexAssertion bool
+	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion, inDurationAssertion, inMD5HexAssertion, inSMIMEAssertion bool
 	var currentResponseAssertion *domain.ResponseAssertion
 	var currentJSONAssertion *domain.JSONAssertion
 	var currentSizeAssertion *domain.SizeAssertion
@@ -120,6 +120,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentCompareAssertion *domain.CompareAssertion
 	var currentDurationAssertion *domain.DurationAssertion
 	var currentMD5HexAssertion *domain.MD5HexAssertion
+	var currentSMIMEAssertion *domain.SMIMEAssertion
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -619,6 +620,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentMD5HexAssertion = &domain.MD5HexAssertion{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "SMIMEAssertion" {
+				inSMIMEAssertion = true
+				currentSMIMEAssertion = &domain.SMIMEAssertion{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -928,6 +934,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentMD5HexAssertion = nil
+			} else if se.Name.Local == "SMIMEAssertion" {
+				inSMIMEAssertion = false
+				if currentSMIMEAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentSMIMEAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentSMIMEAssertion)
+					}
+				}
+				currentSMIMEAssertion = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1128,6 +1146,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentCompareAssertion.CompareContent = (val == "true")
 					}
 				}
+				if currentSMIMEAssertion != nil {
+					switch nameAttr {
+					case "SMIMEAssertion.verifySignature":
+						currentSMIMEAssertion.VerifySignature = (val == "true")
+					case "SMIMEAssertion.notBefore":
+						currentSMIMEAssertion.NotBefore = (val == "true")
+					case "SMIMEAssertion.notAfter":
+						currentSMIMEAssertion.NotAfter = (val == "true")
+					}
+				}
 				if currentCookie != nil && nameAttr == "Cookie.secure" {
 					currentCookie.Secure = (val == "true")
 				}
@@ -1264,6 +1292,22 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "MD5HexAssertion.size":
 					if currentMD5HexAssertion != nil {
 						currentMD5HexAssertion.ExpectedMD5Hex = val
+					}
+				case "SMIMEAssertion.signerDN":
+					if currentSMIMEAssertion != nil {
+						currentSMIMEAssertion.SignerDN = val
+					}
+				case "SMIMEAssertion.signerSerialNumber":
+					if currentSMIMEAssertion != nil {
+						currentSMIMEAssertion.SignerSerialNumber = val
+					}
+				case "SMIMEAssertion.signerEmail":
+					if currentSMIMEAssertion != nil {
+						currentSMIMEAssertion.SignerEmail = val
+					}
+				case "SMIMEAssertion.issuerDN":
+					if currentSMIMEAssertion != nil {
+						currentSMIMEAssertion.IssuerDN = val
 					}
 				case "JSON_PATH":
 					if currentJSONAssertion != nil {
@@ -1562,6 +1606,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inCompareAssertion
 					_ = inDurationAssertion
 					_ = inMD5HexAssertion
+					_ = inSMIMEAssertion
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
