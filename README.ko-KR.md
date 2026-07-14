@@ -484,7 +484,7 @@ Error Set:
 ### Post Processors (후처리기)
 - [x] **JSON Extractor**
 - [x] **Regular Expression Extractor**
-- [ ] **CSS Selector Extractor**
+- [x] **CSS Selector Extractor**
 - [ ] **JSON JMESPath Extractor**
 - [ ] **Boundary Extractor**
 - ~~[ ] **JSR223 PostProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)

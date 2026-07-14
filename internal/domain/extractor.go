@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"bytes"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/oliveagle/jsonpath"
 )
 
@@ -231,4 +233,86 @@ func stringifyJSON(current interface{}) string {
 		}
 	}
 	return ""
+}
+
+// HtmlExtractor implementation
+type HtmlExtractor struct {
+	ReferenceName     string
+	Expr              string // CSS Selector
+	Attribute         string // Empty means text()
+	MatchNo           int
+	DefaultValueStr   string
+	DefaultEmptyValue bool
+}
+
+func (e *HtmlExtractor) RefName() string { return e.ReferenceName }
+func (e *HtmlExtractor) DefaultValue() string {
+	if e.DefaultEmptyValue {
+		return ""
+	}
+	return e.DefaultValueStr
+}
+
+func (e *HtmlExtractor) extractAll(body []byte) ([]string, bool) {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, false
+	}
+
+	var results []string
+	doc.Find(e.Expr).Each(func(i int, s *goquery.Selection) {
+		var val string
+		if e.Attribute != "" {
+			if attr, exists := s.Attr(e.Attribute); exists {
+				val = attr
+			}
+		} else {
+			val = s.Text()
+		}
+		results = append(results, val)
+	})
+
+	if len(results) == 0 {
+		return nil, false
+	}
+	return results, true
+}
+
+func (e *HtmlExtractor) Extract(body []byte) (string, bool) {
+	results, ok := e.extractAll(body)
+	if !ok || len(results) == 0 {
+		return "", false
+	}
+
+	matchIdx := e.MatchNo - 1
+	switch e.MatchNo {
+	case 0:
+		matchIdx = rand.IntN(len(results))
+	case -1:
+		return "", false // Should be handled by ExtractMulti
+	}
+
+	if matchIdx >= 0 && matchIdx < len(results) {
+		return results[matchIdx], true
+	}
+	return "", false
+}
+
+func (e *HtmlExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
+	if e.MatchNo != -1 {
+		return nil, false
+	}
+
+	results, ok := e.extractAll(body)
+	if !ok || len(results) == 0 {
+		return nil, false
+	}
+
+	multi := make(map[string]string)
+	multi[e.ReferenceName+"_matchNr"] = strconv.Itoa(len(results))
+	for i, v := range results {
+		multi[e.ReferenceName+"_"+strconv.Itoa(i+1)] = v
+	}
+
+	return multi, true
 }

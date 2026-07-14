@@ -130,6 +130,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentRegExUserParameters *domain.RegExUserParameters
 	var inSampleTimeout bool
 	var currentSampleTimeout *domain.SampleTimeout
+	var inHtmlExtractor bool
+	var currentHtmlExtractor *domain.HtmlExtractor
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -594,6 +596,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if currentTag == "RegexExtractor" {
 				inRegexExtractor = true
 				currentRegexExtractor = &domain.RegexExtractor{}
+			} else if currentTag == "HtmlExtractor" {
+				inHtmlExtractor = true
+				currentHtmlExtractor = &domain.HtmlExtractor{
+					MatchNo: 1, // Default match number is 1 if not specified
+				}
 			} else if currentTag == "ResponseAssertion" {
 				inResponseAssertion = true
 				currentResponseAssertion = &domain.ResponseAssertion{
@@ -886,6 +893,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentRegexExtractor = nil
+			} else if se.Name.Local == "HtmlExtractor" {
+				inHtmlExtractor = false
+				if currentHtmlExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentHtmlExtractor)
+					}
+				}
+				currentHtmlExtractor = nil
 			} else if se.Name.Local == "ResponseAssertion" {
 				inResponseAssertion = false
 				if currentResponseAssertion != nil && currentThreadGroup != nil {
@@ -1569,6 +1585,28 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							currentJSONExtractor.MatchNo = num
 						}
 					}
+				case "HtmlExtractor.refname":
+					if inHtmlExtractor && currentHtmlExtractor != nil {
+						currentHtmlExtractor.ReferenceName = val
+					}
+				case "HtmlExtractor.expr":
+					if inHtmlExtractor && currentHtmlExtractor != nil {
+						currentHtmlExtractor.Expr = val
+					}
+				case "HtmlExtractor.attribute":
+					if inHtmlExtractor && currentHtmlExtractor != nil {
+						currentHtmlExtractor.Attribute = val
+					}
+				case "HtmlExtractor.match_number":
+					if inHtmlExtractor && currentHtmlExtractor != nil {
+						if m, err := strconv.Atoi(val); err == nil {
+							currentHtmlExtractor.MatchNo = m
+						}
+					}
+				case "HtmlExtractor.default":
+					if inHtmlExtractor && currentHtmlExtractor != nil {
+						currentHtmlExtractor.DefaultValueStr = val
+					}
 				case "RegexExtractor.refname":
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.ReferenceName = val
@@ -1592,6 +1630,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						}
 					}
 					// Removed misplaced default block
+				case "HtmlExtractor.default_empty_value":
+					if inHtmlExtractor && currentHtmlExtractor != nil {
+						currentHtmlExtractor.DefaultEmptyValue = (val == "true")
+					}
 				case "filename":
 					if currentCSVDataSet != nil {
 						currentCSVDataSet.Filename = val
@@ -1734,6 +1776,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inURLRewritingModifier
 					_ = inRegExUserParameters
 					_ = inSampleTimeout
+					_ = inHtmlExtractor
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

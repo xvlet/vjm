@@ -485,7 +485,7 @@ Error Set:
 ### Post Processors
 - [x] **JSON Extractor**
 - [x] **Regular Expression Extractor**
-- [ ] **CSS Selector Extractor**
+- [x] **CSS Selector Extractor**
 - [ ] **JSON JMESPath Extractor**
 - [ ] **Boundary Extractor**
 - ~~[ ] **JSR223 PostProcessor**~~ (Excluded - JVM/Groovy script dependent)
