@@ -25,3 +25,12 @@ type JSONAssertion struct {
 }
 
 func (*JSONAssertion) IsAssertion() bool { return true }
+
+type SizeAssertion struct {
+	Name      string
+	TestField string // "Assertion.test_field"
+	Size      string // "SizeAssertion.size"
+	Operator  int    // "SizeAssertion.operator"
+}
+
+func (*SizeAssertion) IsAssertion() bool { return true }

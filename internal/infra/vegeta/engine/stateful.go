@@ -1262,6 +1262,79 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 			}
 		}
 		return nil
+
+	case *domain.SizeAssertion:
+		var targetSize int
+		switch a.TestField {
+		case "SizeAssertion.response_network_size":
+			// Approximate network size (headers + body)
+			var sb strings.Builder
+			sb.WriteString(resp.Proto)
+			sb.WriteString(" ")
+			sb.WriteString(resp.Status)
+			sb.WriteString("\r\n")
+			for k, v := range resp.Header {
+				sb.WriteString(k)
+				sb.WriteString(": ")
+				sb.WriteString(strings.Join(v, ", "))
+				sb.WriteString("\r\n")
+			}
+			sb.WriteString("\r\n")
+			targetSize = len(sb.String()) + len(bodyBytes)
+		case "SizeAssertion.response_headers":
+			var sb strings.Builder
+			for k, v := range resp.Header {
+				sb.WriteString(k)
+				sb.WriteString(": ")
+				sb.WriteString(strings.Join(v, ", "))
+				sb.WriteString("\n")
+			}
+			targetSize = len(sb.String())
+		case "SizeAssertion.response_code":
+			targetSize = len(strconv.Itoa(resp.StatusCode))
+		case "SizeAssertion.response_message":
+			targetSize = len(resp.Status)
+		default: // "SizeAssertion.response_data"
+			targetSize = len(bodyBytes)
+		}
+
+		expectedSizeStr := session.Evaluator.Evaluate(a.Size)
+		expectedSize, err := strconv.Atoi(expectedSizeStr)
+		if err != nil {
+			return fmt.Errorf("SizeAssertion failed: invalid size '%s'", expectedSizeStr)
+		}
+
+		matched := false
+		operatorStr := ""
+		switch a.Operator {
+		case 1: // =
+			matched = (targetSize == expectedSize)
+			operatorStr = "=="
+		case 2: // !=
+			matched = (targetSize != expectedSize)
+			operatorStr = "!="
+		case 3: // >
+			matched = (targetSize > expectedSize)
+			operatorStr = ">"
+		case 4: // <
+			matched = (targetSize < expectedSize)
+			operatorStr = "<"
+		case 5: // >=
+			matched = (targetSize >= expectedSize)
+			operatorStr = ">="
+		case 6: // <=
+			matched = (targetSize <= expectedSize)
+			operatorStr = "<="
+		default:
+			matched = (targetSize == expectedSize)
+			operatorStr = "=="
+		}
+
+		if !matched {
+			return fmt.Errorf("SizeAssertion failed: size was %d but expected %s %d (field: %s)", targetSize, operatorStr, expectedSize, a.TestField)
+		}
+
+		return nil
 	}
 	return nil
 }

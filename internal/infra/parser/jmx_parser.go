@@ -112,9 +112,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJSONExtractor *domain.JSONExtractor
 	var currentRegexExtractor *domain.RegexExtractor
 
-	var inResponseAssertion, inJSONAssertion bool
+	var inResponseAssertion, inJSONAssertion, inSizeAssertion bool
 	var currentResponseAssertion *domain.ResponseAssertion
 	var currentJSONAssertion *domain.JSONAssertion
+	var currentSizeAssertion *domain.SizeAssertion
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -589,6 +590,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentJSONAssertion = &domain.JSONAssertion{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "SizeAssertion" {
+				inSizeAssertion = true
+				currentSizeAssertion = &domain.SizeAssertion{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -838,6 +844,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentJSONAssertion = nil
+			} else if se.Name.Local == "SizeAssertion" {
+				inSizeAssertion = false
+				if currentSizeAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentSizeAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentSizeAssertion)
+					}
+				}
+				currentSizeAssertion = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1068,6 +1086,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentResponseAssertion.TestType = v
 					}
 				}
+				if currentSizeAssertion != nil && nameAttr == "SizeAssertion.operator" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentSizeAssertion.Operator = v
+					}
+				}
 			case "longProp":
 				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
 					if nameAttr == "timeoutInMs" {
@@ -1126,6 +1149,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "Assertion.test_field":
 					if currentResponseAssertion != nil {
 						currentResponseAssertion.TestField = val
+					}
+					if currentSizeAssertion != nil {
+						currentSizeAssertion.TestField = val
+					}
+				case "SizeAssertion.size":
+					if currentSizeAssertion != nil {
+						currentSizeAssertion.Size = val
 					}
 				case "JSON_PATH":
 					if currentJSONAssertion != nil {
@@ -1419,6 +1449,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						}
 					}
 					_ = inJSONAssertion
+					_ = inSizeAssertion
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

@@ -499,7 +499,7 @@ Error Set:
 ### Assertions (검증)
 - [x] **Response Assertion**
 - [x] **JSON Assertion**
-- [ ] **Size Assertion**
+- [x] **Size Assertion**
 - ~~[ ] **JSR223 Assertion**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [ ] **XPath Assertion**
 - [ ] **Compare Assertion**
