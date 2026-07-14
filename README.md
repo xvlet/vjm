@@ -458,7 +458,7 @@ Error Set:
 - [x] **Assertion Results** (File output only)
 - [x] **Comparison Assertion Visualizer** (File output only)
 - [x] **Generate Summary Results** (Replaced by default vjm/Vegeta output)
-- [ ] **Graph Results**
+- [x] **Graph Results** (File output only)
 - ~~[ ] **JSR223 Listener**~~ (Excluded - JVM/Groovy script dependent)
 - [ ] **Mailer Visualizer**
 - [ ] **Response Time Graph**
