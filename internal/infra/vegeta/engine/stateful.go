@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
@@ -1400,6 +1401,24 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 		// S/MIME signature verification involves complex PKCS#7 parsing and x509 cert validation
 		// which requires external dependencies (e.g. go.mozilla.org/pkcs7).
 		// For high performance load testing, we stub this out and pass it.
+		return nil
+
+	case *domain.XMLAssertion:
+		// Attempt to parse the body as XML
+		if err := xml.Unmarshal(bodyBytes, new(interface{})); err != nil {
+			// xml.Unmarshal on interface{} doesn't fully work for loading DOM,
+			// but a simpler way to just check well-formedness is using xml.Decoder:
+			decoder := xml.NewDecoder(bytes.NewReader(bodyBytes))
+			for {
+				_, err := decoder.Token()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return fmt.Errorf("XMLAssertion failed: invalid XML: %v", err)
+				}
+			}
+		}
 		return nil
 	}
 	return nil

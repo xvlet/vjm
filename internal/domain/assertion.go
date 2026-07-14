@@ -80,3 +80,9 @@ type SMIMEAssertion struct {
 }
 
 func (*SMIMEAssertion) IsAssertion() bool { return true }
+
+type XMLAssertion struct {
+	Name string
+}
+
+func (*XMLAssertion) IsAssertion() bool { return true }
