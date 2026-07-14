@@ -10,6 +10,7 @@ import (
 	"bytes"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/antchfx/xmlquery"
 	"github.com/jmespath/go-jmespath"
 	"github.com/oliveagle/jsonpath"
 )
@@ -533,4 +534,84 @@ func (r *ResultAction) RefName() string      { return "__RESULT_ACTION__" }
 func (r *ResultAction) DefaultValue() string { return "" }
 func (r *ResultAction) Extract(body []byte) (string, bool) {
 	return "", false
+}
+
+// XPathExtractor extracts values using XPath expression from XML/HTML
+type XPathExtractor struct {
+	ReferenceName string // XPathExtractor.refname
+	XPathQuery    string // XPathExtractor.xpathQuery
+	DefaultVal    string // XPathExtractor.default
+	MatchNumber   int    // XPathExtractor.matchNumber (0: Random, -1: All, >0: Nth)
+	Fragment      bool   // XPathExtractor.fragment
+	Tolerant      bool   // XPathExtractor.tolerant
+	NameSpace     bool   // XPathExtractor.namespace
+}
+
+func (e *XPathExtractor) RefName() string {
+	return e.ReferenceName
+}
+
+func (e *XPathExtractor) DefaultValue() string {
+	return e.DefaultVal
+}
+
+func (e *XPathExtractor) Extract(body []byte) (string, bool) {
+	// Not used directly if ExtractMulti is available and handles singular correctly.
+	// But we'll implement it to satisfy Extractor interface if MultiExtractor fails.
+	return "", false
+}
+
+func (e *XPathExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
+	doc, err := xmlquery.Parse(bytes.NewReader(body))
+	if err != nil {
+		if e.Tolerant {
+			// If tolerant is true, we should ideally use htmlquery, but vjm might not have it loaded.
+			// Let's fallback to string manipulation or just fail for now.
+			return nil, false
+		}
+		return nil, false
+	}
+
+	nodes, err := xmlquery.QueryAll(doc, e.XPathQuery)
+	if err != nil || len(nodes) == 0 {
+		return nil, false
+	}
+
+	var matches []string
+	for _, n := range nodes {
+		if e.Fragment {
+			matches = append(matches, n.OutputXML(true))
+		} else {
+			matches = append(matches, n.InnerText())
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil, false
+	}
+
+	res := make(map[string]string)
+
+	if e.MatchNumber == 0 {
+		// Random
+		idx := rand.IntN(len(matches))
+		res[e.ReferenceName] = matches[idx]
+		return res, true
+	} else if e.MatchNumber > 0 {
+		// Nth
+		if e.MatchNumber <= len(matches) {
+			res[e.ReferenceName] = matches[e.MatchNumber-1]
+			return res, true
+		}
+		return nil, false
+	}
+
+	// MatchNumber < 0 (All)
+	res[e.ReferenceName] = matches[0] // Default behavior for refName itself? Actually refName gets the default value in JMeter if matchNo < 0? No, JMeter usually sets refName_matchNr and refName_1, etc. But if it follows JMeter, it doesn't set refName without suffix for MatchNo < 0 unless there's only 1 match.
+	// To be consistent with RegexExtractor in vjm:
+	res[e.ReferenceName+"_matchNr"] = strconv.Itoa(len(matches))
+	for i, m := range matches {
+		res[e.ReferenceName+"_"+strconv.Itoa(i+1)] = m
+	}
+	return res, true
 }

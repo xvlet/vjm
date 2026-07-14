@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+    <hashTree>
+        <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test XPath Extractor" enabled="true">
+            <boolProp name="TestPlan.functional_mode">false</boolProp>
+            <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+            <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+            <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+                <collectionProp name="Arguments.arguments" />
+            </elementProp>
+        </TestPlan>
+        <hashTree>
+            <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+                <intProp name="ThreadGroup.num_threads">1</intProp>
+                <intProp name="ThreadGroup.ramp_time">1</intProp>
+                <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+                <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+                <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+                    <stringProp name="LoopController.loops">1</stringProp>
+                    <boolProp name="LoopController.continue_forever">false</boolProp>
+                </elementProp>
+            </ThreadGroup>
+            <hashTree>
+                <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="HTTP Request" enabled="true">
+                    <stringProp name="HTTPSampler.domain">localhost</stringProp>
+                    <stringProp name="HTTPSampler.port">58080</stringProp>
+                    <stringProp name="HTTPSampler.protocol">http</stringProp>
+                    <stringProp name="HTTPSampler.path">/test/postprocessor/xpath</stringProp>
+                    <stringProp name="HTTPSampler.method">GET</stringProp>
+                    <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+                    <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+                    <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+                    <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+                    <boolProp name="HTTPSampler.BROWSER_COMPATIBLE_MULTIPART">false</boolProp>
+                    <boolProp name="HTTPSampler.image_parser">false</boolProp>
+                    <boolProp name="HTTPSampler.concurrentDwn">false</boolProp>
+                    <stringProp name="HTTPSampler.concurrentPool">6</stringProp>
+                    <boolProp name="HTTPSampler.md5">false</boolProp>
+                    <intProp name="HTTPSampler.ipSourceType">0</intProp>
+                </HTTPSamplerProxy>
+                <hashTree>
+                    <XPathExtractor guiclass="XPathExtractorGui" testclass="XPathExtractor" testname="XPath Extractor All" enabled="true">
+                        <stringProp name="XPathExtractor.refname">titleAll</stringProp>
+                        <stringProp name="XPathExtractor.xpathQuery">//title</stringProp>
+                        <stringProp name="XPathExtractor.default">NOT_FOUND</stringProp>
+                        <stringProp name="XPathExtractor.matchNumber">-1</stringProp>
+                        <boolProp name="XPathExtractor.fragment">false</boolProp>
+                        <boolProp name="XPathExtractor.tolerant">false</boolProp>
+                        <boolProp name="XPathExtractor.namespace">false</boolProp>
+                    </XPathExtractor>
+                    <hashTree />
+                    <XPathExtractor guiclass="XPathExtractorGui" testclass="XPathExtractor" testname="XPath Extractor Nth" enabled="true">
+                        <stringProp name="XPathExtractor.refname">titleNth</stringProp>
+                        <stringProp name="XPathExtractor.xpathQuery">//title</stringProp>
+                        <stringProp name="XPathExtractor.default">NOT_FOUND</stringProp>
+                        <stringProp name="XPathExtractor.matchNumber">2</stringProp>
+                        <boolProp name="XPathExtractor.fragment">false</boolProp>
+                        <boolProp name="XPathExtractor.tolerant">false</boolProp>
+                        <boolProp name="XPathExtractor.namespace">false</boolProp>
+                    </XPathExtractor>
+                    <hashTree />
+                </hashTree>
+            </hashTree>
+        </hashTree>
+    </hashTree>
+</jmeterTestPlan>

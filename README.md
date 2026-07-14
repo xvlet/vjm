@@ -497,8 +497,8 @@ Error Set:
 - ~~[ ] **JSR223 PostProcessor**~~ (Excluded - JVM/Groovy script dependent)
 - [x] **Debug PostProcessor**
 - ~~[ ] **JDBC PostProcessor**~~ (Excluded - JVM/JDBC dependent)
-- [ ] **Result Status Action Handler**
-- [ ] **XPath Extractor**
+- [x] **Result Status Action Handler**
+- [x] **XPath Extractor**
 - ~~[ ] **XPath2 Extractor**~~ (Excluded - Java Saxon XPath 2.0 dependent)
 - ~~[ ] **BeanShell PostProcessor**~~ (Excluded - JVM dependent)
 

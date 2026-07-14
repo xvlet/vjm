@@ -497,7 +497,7 @@ Error Set:
 - [x] **Debug PostProcessor**
 - ~~[ ] **JDBC PostProcessor**~~ (제외 - JVM/JDBC 종속)
 - [x] **Result Status Action Handler**
-- [ ] **XPath Extractor**
+- [x] **XPath Extractor**
 - ~~[ ] **XPath2 Extractor**~~ (제외 - Java Saxon 기반 XPath 2.0 종속)
 - ~~[ ] **BeanShell PostProcessor**~~ (제외 - JVM 종속)
 

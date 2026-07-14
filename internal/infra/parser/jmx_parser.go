@@ -140,6 +140,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentDebugPostProcessor *domain.DebugPostProcessor
 	var inResultAction bool
 	var currentResultAction *domain.ResultAction
+	var inXPathExtractor bool
+	var currentXPathExtractor *domain.XPathExtractor
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -629,6 +631,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentResultAction = &domain.ResultAction{
 					Action: 0,
 				}
+			} else if currentTag == "XPathExtractor" {
+				inXPathExtractor = true
+				currentXPathExtractor = &domain.XPathExtractor{
+					MatchNumber: -1, // JMeter default is often -1 (all) or random (0). Wait, default is usually -1.
+				}
 			} else if currentTag == "ResponseAssertion" {
 				inResponseAssertion = true
 				currentResponseAssertion = &domain.ResponseAssertion{
@@ -966,6 +973,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentResultAction = nil
+			} else if se.Name.Local == "XPathExtractor" {
+				inXPathExtractor = false
+				if currentXPathExtractor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentXPathExtractor)
+					}
+				}
+				currentXPathExtractor = nil
 			} else if se.Name.Local == "ResponseAssertion" {
 				inResponseAssertion = false
 				if currentResponseAssertion != nil && currentThreadGroup != nil {
@@ -1395,6 +1411,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentResultAction.Action = v
 					}
 				}
+				if currentXPathExtractor != nil {
+					if nameAttr == "XPathExtractor.fragment" {
+						currentXPathExtractor.Fragment = (val == "true")
+					} else if nameAttr == "XPathExtractor.tolerant" {
+						currentXPathExtractor.Tolerant = (val == "true")
+					} else if nameAttr == "XPathExtractor.namespace" {
+						currentXPathExtractor.NameSpace = (val == "true")
+					}
+				}
 				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
 					if nameAttr == "groupSize" {
 						currentTimer.GroupSize = val
@@ -1731,6 +1756,24 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inBoundaryExtractor && currentBoundaryExtractor != nil {
 						currentBoundaryExtractor.DefaultValueStr = val
 					}
+				case "XPathExtractor.refname":
+					if inXPathExtractor && currentXPathExtractor != nil {
+						currentXPathExtractor.ReferenceName = val
+					}
+				case "XPathExtractor.xpathQuery":
+					if inXPathExtractor && currentXPathExtractor != nil {
+						currentXPathExtractor.XPathQuery = val
+					}
+				case "XPathExtractor.default":
+					if inXPathExtractor && currentXPathExtractor != nil {
+						currentXPathExtractor.DefaultVal = val
+					}
+				case "XPathExtractor.matchNumber":
+					if inXPathExtractor && currentXPathExtractor != nil {
+						if m, err := strconv.Atoi(val); err == nil {
+							currentXPathExtractor.MatchNumber = m
+						}
+					}
 				case "RegexExtractor.refname":
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.ReferenceName = val
@@ -1905,6 +1948,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inBoundaryExtractor
 					_ = inDebugPostProcessor
 					_ = inResultAction
+					_ = inXPathExtractor
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
