@@ -479,7 +479,7 @@ Error Set:
 - [x] **HTTP URL Re-writing Modifier** (Not recommended due to performance overhead, use Regex Extractor instead)
 - ~~[ ] **JDBC PreProcessor**~~ (Excluded - JVM/JDBC dependent)
 - [x] **RegEx User Parameters**
-- [ ] **Sample Timeout**
+- [x] **Sample Timeout**
 - ~~[ ] **BeanShell PreProcessor**~~ (Excluded - JVM dependent)
 
 ### Post Processors

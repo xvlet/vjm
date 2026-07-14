@@ -34,3 +34,11 @@ type RegExUserParameters struct {
 }
 
 func (*RegExUserParameters) IsPreProcessor() bool { return true }
+
+// SampleTimeout represents the JMeter Sample Timeout PreProcessor
+type SampleTimeout struct {
+	Name    string
+	Timeout string
+}
+
+func (*SampleTimeout) IsPreProcessor() bool { return true }

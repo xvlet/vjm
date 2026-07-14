@@ -478,7 +478,7 @@ Error Set:
 - [x] **HTTP URL Re-writing Modifier** (성능 저하 우려로 사용 비권장, 정규식 추출기 사용 권장)
 - ~~[ ] **JDBC PreProcessor**~~ (제외 - JVM/JDBC 종속)
 - [x] **RegEx User Parameters**
-- [ ] **Sample Timeout**
+- [x] **Sample Timeout**
 - ~~[ ] **BeanShell PreProcessor**~~ (제외 - JVM 종속)
 
 ### Post Processors (후처리기)

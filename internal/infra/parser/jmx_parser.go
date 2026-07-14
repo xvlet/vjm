@@ -128,6 +128,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentURLRewritingModifier *domain.URLRewritingModifier
 	var inRegExUserParameters bool
 	var currentRegExUserParameters *domain.RegExUserParameters
+	var inSampleTimeout bool
+	var currentSampleTimeout *domain.SampleTimeout
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -654,6 +656,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					ParamNamesGrNr:  "1",
 					ParamValuesGrNr: "2",
 				}
+			} else if currentTag == "SampleTimeout" || currentTag == "org.apache.jmeter.modifiers.SampleTimeout" {
+				inSampleTimeout = true
+				currentSampleTimeout = &domain.SampleTimeout{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -1017,6 +1024,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentRegExUserParameters = nil
+			} else if se.Name.Local == "SampleTimeout" || se.Name.Local == "org.apache.jmeter.modifiers.SampleTimeout" {
+				inSampleTimeout = false
+				if currentSampleTimeout != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.PreProcessors = append(lastSampler.PreProcessors, currentSampleTimeout)
+					}
+				}
+				currentSampleTimeout = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1691,6 +1708,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inRegExUserParameters && currentRegExUserParameters != nil {
 						currentRegExUserParameters.ParamValuesGrNr = val
 					}
+				case "SampleTimeout.timeout":
+					if inSampleTimeout && currentSampleTimeout != nil {
+						currentSampleTimeout.Timeout = val
+					}
 				case "classname":
 					if currentBackendListener != nil {
 						currentBackendListener.Classname = val
@@ -1712,6 +1733,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inHTMLLinkParser
 					_ = inURLRewritingModifier
 					_ = inRegExUserParameters
+					_ = inSampleTimeout
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

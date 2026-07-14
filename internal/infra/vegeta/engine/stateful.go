@@ -1013,8 +1013,22 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						if bodyStr != "" {
 							bodyReader = strings.NewReader(bodyStr)
 						}
-						req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+						reqCtx := ctx
+						var cancel context.CancelFunc
+						for _, p := range sampler.PreProcessors {
+							if st, ok := p.(*domain.SampleTimeout); ok {
+								timeoutStr := session.Evaluator.Evaluate(st.Timeout)
+								if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
+									reqCtx, cancel = context.WithTimeout(reqCtx, time.Duration(t)*time.Millisecond)
+								}
+							}
+						}
+
+						req, err := http.NewRequestWithContext(reqCtx, method, url, bodyReader)
 						if err != nil {
+							if cancel != nil {
+								cancel()
+							}
 							continue
 						}
 
@@ -1054,6 +1068,9 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						start := time.Now()
 						resp, err := sessionClient.Do(req)
 						elapsed := time.Since(start)
+						if cancel != nil {
+							cancel()
+						}
 
 						attackName := sampler.Name
 						if sampler.TransactionName != "" && sampler.TransactionParent {
