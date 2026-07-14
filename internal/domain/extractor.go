@@ -523,3 +523,14 @@ func (e *DebugPostProcessor) Execute(vars map[string]string, props map[string]st
 	// Just print it out
 	print(sb.String())
 }
+
+// ResultAction represents JMeter's Result Status Action Handler
+type ResultAction struct {
+	Action int // 0: Continue, 1: Stop Thread, 2: Stop Test, 3: Stop Test Now, 4: Start Next Loop, 5: Start Next Iteration of Current Loop, 6: Break Current Loop
+}
+
+func (r *ResultAction) RefName() string      { return "__RESULT_ACTION__" }
+func (r *ResultAction) DefaultValue() string { return "" }
+func (r *ResultAction) Extract(body []byte) (string, bool) {
+	return "", false
+}

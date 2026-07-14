@@ -28,11 +28,17 @@ While JMeter is a powerful tool for writing test scenarios, its JVM-based nature
 
 ```mermaid
 flowchart LR
-    A["JMeter .jmx file<br/>(Write Test Plan)"] -->|Parse| B("vjm (Engine)")
-    B -->|Load Generate| C["Vegeta"]
-    C -->|.bin Result| D("vjm")
-    D -->|Convert to JTL| E[".jtl file"]
-    D -->|HTML Report| F["JMeter Dashboard<br/>(View Results)"]
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#333
+    classDef highlight fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b,font-weight:bold
+    classDef engine fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100,font-weight:bold
+    classDef vjm fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#1a237e,font-weight:bold
+
+    A["📄 JMeter .jmx<br/>(Test Plan)"]:::highlight -->|Parse| B("⚡ vjm<br/>(Core Engine)"):::vjm
+    B -->|Generate Load| C{"🔥 Vegeta"}:::engine
+    C -.->|.bin Result| D("⚡ vjm<br/>(Reporter)"):::vjm
+    D -->|Convert| E["📊 .jtl File"]:::highlight
+    D -->|Generate| F["📈 HTML Dashboard"]:::highlight
 ```
 
 ---

@@ -138,6 +138,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentBoundaryExtractor *domain.BoundaryExtractor
 	var inDebugPostProcessor bool
 	var currentDebugPostProcessor *domain.DebugPostProcessor
+	var inResultAction bool
+	var currentResultAction *domain.ResultAction
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -622,6 +624,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentDebugPostProcessor = &domain.DebugPostProcessor{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "ResultAction" {
+				inResultAction = true
+				currentResultAction = &domain.ResultAction{
+					Action: 0,
+				}
 			} else if currentTag == "ResponseAssertion" {
 				inResponseAssertion = true
 				currentResponseAssertion = &domain.ResponseAssertion{
@@ -950,6 +957,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentDebugPostProcessor = nil
+			} else if se.Name.Local == "ResultAction" {
+				inResultAction = false
+				if currentResultAction != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentResultAction)
+					}
+				}
+				currentResultAction = nil
 			} else if se.Name.Local == "ResponseAssertion" {
 				inResponseAssertion = false
 				if currentResponseAssertion != nil && currentThreadGroup != nil {
@@ -1372,6 +1388,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if currentCacheManager != nil && nameAttr == "maxSize" {
 					if v, err := strconv.Atoi(val); err == nil {
 						currentCacheManager.MaxSize = v
+					}
+				}
+				if currentResultAction != nil && nameAttr == "OnError.action" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentResultAction.Action = v
 					}
 				}
 				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
@@ -1883,6 +1904,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inJMESPathExtractor
 					_ = inBoundaryExtractor
 					_ = inDebugPostProcessor
+					_ = inResultAction
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

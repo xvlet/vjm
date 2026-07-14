@@ -27,11 +27,17 @@ JMeter는 강력한 테스트 시나리오 작성 도구이지만 JVM 기반 특
 
 ```mermaid
 flowchart LR
-    A["JMeter .jmx 파일<br/>(테스트 플랜 작성)"] -->|파싱| B("vjm (Engine)")
-    B -->|부하 발생| C["Vegeta"]
-    C -->|.bin 결과| D("vjm")
-    D -->|JTL 변환| E[".jtl 파일"]
-    D -->|HTML 리포트| F["JMeter Dashboard<br/>(결과 확인)"]
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#333
+    classDef highlight fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b,font-weight:bold
+    classDef engine fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100,font-weight:bold
+    classDef vjm fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#1a237e,font-weight:bold
+
+    A["📄 JMeter .jmx<br/>(테스트 플랜)"]:::highlight -->|파싱| B("⚡ vjm<br/>(Core Engine)"):::vjm
+    B -->|부하 발생| C{"🔥 Vegeta"}:::engine
+    C -.->|.bin 결과| D("⚡ vjm<br/>(Reporter)"):::vjm
+    D -->|JTL 변환| E["📊 .jtl 파일"]:::highlight
+    D -->|HTML 리포트| F["📈 JMeter Dashboard"]:::highlight
 ```
 
 ---
@@ -490,7 +496,7 @@ Error Set:
 - ~~[ ] **JSR223 PostProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [x] **Debug PostProcessor**
 - ~~[ ] **JDBC PostProcessor**~~ (제외 - JVM/JDBC 종속)
-- [ ] **Result Status Action Handler**
+- [x] **Result Status Action Handler**
 - [ ] **XPath Extractor**
 - ~~[ ] **XPath2 Extractor**~~ (제외 - Java Saxon 기반 XPath 2.0 종속)
 - ~~[ ] **BeanShell PostProcessor**~~ (제외 - JVM 종속)

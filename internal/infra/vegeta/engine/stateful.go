@@ -215,6 +215,7 @@ type StatefulAttacker struct {
 	maxW      uint64
 	pacer     vegeta.Pacer
 	dur       time.Duration
+	stopped   int32
 }
 
 func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration) *StatefulAttacker {
@@ -662,6 +663,9 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 					elapsed := time.Since(attackStart)
 					if a.dur > 0 && elapsed >= a.dur {
+						return
+					}
+					if atomic.LoadInt32(&a.stopped) == 1 {
 						return
 					}
 
@@ -1178,6 +1182,30 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						case results <- res:
 						case <-ctx.Done():
 							return
+						}
+
+						// Evaluate Result Status Action Handler
+						if res.Code >= 400 || res.Error != "" {
+							action := 0
+							for _, ext := range sampler.Extractors {
+								if ra, ok := ext.(*domain.ResultAction); ok {
+									action = ra.Action
+									break
+								}
+							}
+
+							switch action {
+							case 1: // Stop Thread
+								return
+							case 2, 3: // Stop Test, Stop Test Now
+								atomic.StoreInt32(&a.stopped, 1)
+								return
+							case 4, 5, 6: // Start Next Thread Loop / Break Loop
+								break
+							}
+							if action >= 4 {
+								break
+							}
 						}
 					}
 				}
