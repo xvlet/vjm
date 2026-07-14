@@ -456,7 +456,7 @@ Error Set:
 - [x] **Backend Listener** (Parsed, DB logic pending)
 - [x] **Aggregate Graph** (File output only)
 - [x] **Assertion Results** (File output only)
-- [ ] **Comparison Assertion Visualizer**
+- [x] **Comparison Assertion Visualizer** (File output only)
 - [ ] **Generate Summary Results**
 - [ ] **Graph Results**
 - ~~[ ] **JSR223 Listener**~~ (Excluded - JVM/Groovy script dependent)

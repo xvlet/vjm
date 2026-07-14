@@ -455,7 +455,7 @@ Error Set:
 - [x] **Backend Listener** (파싱 완료, 외부 DB 연동은 추후 확장)
 - [x] **Aggregate Graph** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Assertion Results** (GUI 렌더링 제외, 파일 출력 전용)
-- [ ] **Comparison Assertion Visualizer**
+- [x] **Comparison Assertion Visualizer** (GUI 렌더링 제외, 파일 출력 전용)
 - [ ] **Generate Summary Results**
 - [ ] **Graph Results**
 - ~~[ ] **JSR223 Listener**~~ (제외 - JVM/Groovy 스크립트 종속)
