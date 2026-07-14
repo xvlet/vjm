@@ -460,8 +460,8 @@ Error Set:
 - [x] **Generate Summary Results** (Replaced by default vjm/Vegeta output)
 - [x] **Graph Results** (File output only)
 - ~~[ ] **JSR223 Listener**~~ (Excluded - JVM/Groovy script dependent)
-- [x] **Mailer Visualizer** (Fully implemented: File output & actual SMTP email sending)
-- [ ] **Response Time Graph**
+- [x] **Mailer Visualizer** (Implemented: File output & actual SMTP email sending)
+- [x] **Response Time Graph** (File output only)
 - [ ] **Save Responses to a file**
 - [ ] **Simple Data Writer**
 - [ ] **View Results in Table**
