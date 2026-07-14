@@ -112,10 +112,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJSONExtractor *domain.JSONExtractor
 	var currentRegexExtractor *domain.RegexExtractor
 
-	var inResponseAssertion, inJSONAssertion, inSizeAssertion bool
+	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion bool
 	var currentResponseAssertion *domain.ResponseAssertion
 	var currentJSONAssertion *domain.JSONAssertion
 	var currentSizeAssertion *domain.SizeAssertion
+	var currentXPathAssertion *domain.XPathAssertion
+	var currentCompareAssertion *domain.CompareAssertion
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -595,6 +597,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentSizeAssertion = &domain.SizeAssertion{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "XPathAssertion" {
+				inXPathAssertion = true
+				currentXPathAssertion = &domain.XPathAssertion{
+					Name: testNameAttr,
+				}
+			} else if currentTag == "CompareAssertion" {
+				inCompareAssertion = true
+				currentCompareAssertion = &domain.CompareAssertion{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -856,6 +868,30 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentSizeAssertion = nil
+			} else if se.Name.Local == "XPathAssertion" {
+				inXPathAssertion = false
+				if currentXPathAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentXPathAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentXPathAssertion)
+					}
+				}
+				currentXPathAssertion = nil
+			} else if se.Name.Local == "CompareAssertion" {
+				inCompareAssertion = false
+				if currentCompareAssertion != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.Assertions = append(lastSampler.Assertions, currentCompareAssertion)
+					} else {
+						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentCompareAssertion)
+					}
+				}
+				currentCompareAssertion = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1039,6 +1075,23 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentJSONAssertion.IsRegex = (val == "true")
 					}
 				}
+				if currentXPathAssertion != nil {
+					switch nameAttr {
+					case "XPath.negate":
+						currentXPathAssertion.Negate = (val == "true")
+					case "XPath.validate":
+						currentXPathAssertion.Validate = (val == "true")
+					case "XPath.tolerant":
+						currentXPathAssertion.Tolerant = (val == "true")
+					case "XPath.whitespace":
+						currentXPathAssertion.Whitespace = (val == "true")
+					}
+				}
+				if currentCompareAssertion != nil {
+					if nameAttr == "CompareAssertion.compareContent" {
+						currentCompareAssertion.CompareContent = (val == "true")
+					}
+				}
 				if currentCookie != nil && nameAttr == "Cookie.secure" {
 					currentCookie.Secure = (val == "true")
 				}
@@ -1095,6 +1148,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if currentTimer != nil && currentTimer.Type == "SyncTimer" {
 					if nameAttr == "timeoutInMs" {
 						currentTimer.TimeoutInMs = val
+					}
+				}
+				if currentCompareAssertion != nil && nameAttr == "CompareAssertion.compareTime" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentCompareAssertion.CompareTime = v
 					}
 				}
 			case "stringProp":
@@ -1156,6 +1214,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "SizeAssertion.size":
 					if currentSizeAssertion != nil {
 						currentSizeAssertion.Size = val
+					}
+				case "XPath.xpath":
+					if currentXPathAssertion != nil {
+						currentXPathAssertion.XPath = val
 					}
 				case "JSON_PATH":
 					if currentJSONAssertion != nil {
@@ -1450,6 +1512,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 					_ = inJSONAssertion
 					_ = inSizeAssertion
+					_ = inXPathAssertion
+					_ = inCompareAssertion
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

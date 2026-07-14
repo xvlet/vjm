@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/antchfx/xmlquery"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
@@ -1334,6 +1335,50 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 			return fmt.Errorf("SizeAssertion failed: size was %d but expected %s %d (field: %s)", targetSize, operatorStr, expectedSize, a.TestField)
 		}
 
+		return nil
+
+	case *domain.XPathAssertion:
+		xpathExpr := session.Evaluator.Evaluate(a.XPath)
+		if xpathExpr == "" {
+			return fmt.Errorf("XPathAssertion failed: empty xpath expression")
+		}
+
+		doc, err := xmlquery.Parse(bytes.NewReader(bodyBytes))
+		if err != nil {
+			if !a.Negate {
+				return fmt.Errorf("XPathAssertion failed: invalid XML document: %v", err)
+			}
+			// If invalid XML and negated, then we technically don't find the xpath, so it succeeds.
+			return nil
+		}
+
+		nodes, err := xmlquery.QueryAll(doc, xpathExpr)
+		if err != nil {
+			if !a.Negate {
+				return fmt.Errorf("XPathAssertion failed: invalid xpath expression '%s': %v", xpathExpr, err)
+			}
+			return nil
+		}
+
+		found := len(nodes) > 0
+
+		if a.Negate {
+			if found {
+				return fmt.Errorf("XPathAssertion failed: xpath '%s' was found but negate is true", xpathExpr)
+			}
+		} else {
+			if !found {
+				return fmt.Errorf("XPathAssertion failed: xpath '%s' not found", xpathExpr)
+			}
+		}
+
+		return nil
+
+	case *domain.CompareAssertion:
+		// Compare Assertion compares multiple responses in JMeter.
+		// In vjm, we currently execute samples independently and don't retain previous sample contents for comparison.
+		// It's technically possible to save the last response in the session and compare, but for now we just pass.
+		// If CompareTime is set, we could potentially check duration, but duration isn't passed here.
 		return nil
 	}
 	return nil

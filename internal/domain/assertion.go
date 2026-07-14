@@ -34,3 +34,22 @@ type SizeAssertion struct {
 }
 
 func (*SizeAssertion) IsAssertion() bool { return true }
+
+type XPathAssertion struct {
+	Name       string
+	XPath      string // "XPath.xpath"
+	Negate     bool   // "XPath.negate"
+	Validate   bool   // "XPath.validate"
+	Tolerant   bool   // "XPath.tolerant"
+	Whitespace bool   // "XPath.whitespace"
+}
+
+func (*XPathAssertion) IsAssertion() bool { return true }
+
+type CompareAssertion struct {
+	Name           string
+	CompareContent bool // "CompareAssertion.compareContent"
+	CompareTime    int  // "CompareAssertion.compareTime"
+}
+
+func (*CompareAssertion) IsAssertion() bool { return true }

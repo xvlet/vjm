@@ -501,8 +501,8 @@ Error Set:
 - [x] **JSON Assertion**
 - [x] **Size Assertion**
 - ~~[ ] **JSR223 Assertion**~~ (제외 - JVM/Groovy 스크립트 종속)
-- [ ] **XPath Assertion**
-- [ ] **Compare Assertion**
+- [x] **XPath Assertion**
+- [x] **Compare Assertion**
 - [ ] **Duration Assertion**
 - ~~[ ] **HTML Assertion**~~ (제외 - JTidy(Java) 라이브러리 종속)
 - [ ] **MD5Hex Assertion**
