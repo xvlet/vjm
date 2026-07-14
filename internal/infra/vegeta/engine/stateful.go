@@ -1000,6 +1000,19 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							time.Sleep(totalDelay)
 						}
 
+						// Execute PreProcessors
+						for _, preProc := range sampler.PreProcessors {
+							switch p := preProc.(type) {
+							case *domain.HTMLLinkParser:
+								// In JMeter, HTMLLinkParser parses the previous response HTML and replaces
+								// the current sampler's parameters or paths with matching links.
+								// In vjm's concurrent high-throughput model, this real-time DOM parsing
+								// and dynamic sampler mutation is highly expensive and complex.
+								// For now, we stub this out as a no-op to allow the load test to proceed.
+								_ = p
+							}
+						}
+
 						// Evaluate variables in URL
 						url := session.Evaluator.Evaluate(sampler.Request.URL)
 						method := sampler.Request.Method

@@ -221,6 +221,7 @@ type Sampler struct {
 	IfCondition       string // JEXL3 or Groovy boolean condition string
 	TransactionName   string // Name of the Transaction Controller
 	TransactionParent bool   // Generate parent sample
+	PreProcessors     []PreProcessor
 	Extractors        []Extractor
 	Assertions        []Assertion
 

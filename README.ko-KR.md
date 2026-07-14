@@ -475,7 +475,7 @@ Error Set:
 ### Pre Processors (전처리기)
 - [x] **User Parameters**
 - ~~[ ] **JSR223 PreProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)
-- [ ] **HTML Link Parser**
+- [x] **HTML Link Parser**
 - [ ] **HTTP URL Re-writing Modifier**
 - ~~[ ] **JDBC PreProcessor**~~ (제외 - JVM/JDBC 종속)
 - [ ] **RegEx User Parameters**

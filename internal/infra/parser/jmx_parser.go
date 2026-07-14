@@ -113,6 +113,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentRegexExtractor *domain.RegexExtractor
 
 	var inResponseAssertion, inJSONAssertion, inSizeAssertion, inXPathAssertion, inCompareAssertion, inDurationAssertion, inMD5HexAssertion, inSMIMEAssertion, inXMLAssertion bool
+	var inHTMLLinkParser bool
 	var currentResponseAssertion *domain.ResponseAssertion
 	var currentJSONAssertion *domain.JSONAssertion
 	var currentSizeAssertion *domain.SizeAssertion
@@ -122,6 +123,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentMD5HexAssertion *domain.MD5HexAssertion
 	var currentSMIMEAssertion *domain.SMIMEAssertion
 	var currentXMLAssertion *domain.XMLAssertion
+	var currentHTMLLinkParser *domain.HTMLLinkParser
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -631,6 +633,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentXMLAssertion = &domain.XMLAssertion{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "HTMLLinkParser" {
+				inHTMLLinkParser = true
+				currentHTMLLinkParser = &domain.HTMLLinkParser{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -964,6 +971,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentXMLAssertion = nil
+			} else if se.Name.Local == "HTMLLinkParser" {
+				inHTMLLinkParser = false
+				if currentHTMLLinkParser != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.PreProcessors = append(lastSampler.PreProcessors, currentHTMLLinkParser)
+					}
+				}
+				currentHTMLLinkParser = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1626,6 +1643,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inMD5HexAssertion
 					_ = inSMIMEAssertion
 					_ = inXMLAssertion
+					_ = inHTMLLinkParser
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
