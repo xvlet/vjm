@@ -463,7 +463,7 @@ Error Set:
 - [x] **Response Time Graph** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Save Responses to a file** (파싱 및 개별 파일 저장 지원)
 - [x] **Simple Data Writer** (파싱 및 JTL 파일 출력 지원)
-- [ ] **View Results in Table**
+- [x] **View Results in Table** (GUI 렌더링 제외, 파일 출력 전용)
 - ~~[ ] **BeanShell Listener**~~ (제외 - JVM 종속)
 
 ### Timers (타이머)

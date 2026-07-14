@@ -464,7 +464,7 @@ Error Set:
 - [x] **Response Time Graph** (File output only)
 - [x] **Save Responses to a file** (Parsed and actual individual file saving supported)
 - [x] **Simple Data Writer** (Supports parsing and JTL file output)
-- [ ] **View Results in Table**
+- [x] **View Results in Table** (File output only)
 - ~~[ ] **BeanShell Listener**~~ (Excluded - JVM dependent)
 
 ### Timers
