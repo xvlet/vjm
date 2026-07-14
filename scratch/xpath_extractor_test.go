@@ -32,9 +32,10 @@ func TestXPathExtractorParse(t *testing.T) {
 	var extAll, extNth *domain.XPathExtractor
 	for _, ext := range sampler.Extractors {
 		if x, ok := ext.(*domain.XPathExtractor); ok {
-			if x.ReferenceName == "titleAll" {
+			switch x.ReferenceName {
+			case "titleAll":
 				extAll = x
-			} else if x.ReferenceName == "titleNth" {
+			case "titleNth":
 				extNth = x
 			}
 		}
@@ -76,9 +77,10 @@ func TestXPathExtractorExecution(t *testing.T) {
 	var extAll, extNth *domain.XPathExtractor
 	for _, ext := range sampler.Extractors {
 		if x, ok := ext.(*domain.XPathExtractor); ok {
-			if x.ReferenceName == "titleAll" {
+			switch x.ReferenceName {
+			case "titleAll":
 				extAll = x
-			} else if x.ReferenceName == "titleNth" {
+			case "titleNth":
 				extNth = x
 			}
 		}

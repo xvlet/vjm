@@ -882,6 +882,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				delete(transactionNameMap, hashTreeDepth)
 				delete(transactionParentMap, hashTreeDepth)
 				hashTreeDepth--
+				if hashTreeDepth == 2 {
+					currentThreadGroup = nil
+				}
 				activeWeight = 1.0
 				for d := hashTreeDepth; d >= 0; d-- {
 					if w, ok := weightMap[d]; ok {
@@ -1412,11 +1415,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				if currentXPathExtractor != nil {
-					if nameAttr == "XPathExtractor.fragment" {
+					switch nameAttr {
+					case "XPathExtractor.fragment":
 						currentXPathExtractor.Fragment = (val == "true")
-					} else if nameAttr == "XPathExtractor.tolerant" {
+					case "XPathExtractor.tolerant":
 						currentXPathExtractor.Tolerant = (val == "true")
-					} else if nameAttr == "XPathExtractor.namespace" {
+					case "XPathExtractor.namespace":
 						currentXPathExtractor.NameSpace = (val == "true")
 					}
 				}

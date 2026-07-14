@@ -455,7 +455,7 @@ Error Set:
 - [x] **Aggregate Report** (File output only)
 - [x] **Backend Listener** (Parsed, DB logic pending)
 - [x] **Aggregate Graph** (File output only)
-- [ ] **Assertion Results**
+- [x] **Assertion Results** (File output only)
 - [ ] **Comparison Assertion Visualizer**
 - [ ] **Generate Summary Results**
 - [ ] **Graph Results**
