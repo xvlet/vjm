@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"bytes"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jmespath/go-jmespath"
 	"github.com/oliveagle/jsonpath"
@@ -480,4 +481,45 @@ func (e *BoundaryExtractor) ExtractMulti(body []byte) (map[string]string, bool) 
 	}
 
 	return multi, true
+}
+
+// DebugPostProcessor represents JMeter's Debug PostProcessor.
+type DebugPostProcessor struct {
+	Name                     string
+	DisplayJMeterVariables   bool
+	DisplayJMeterProperties  bool
+	DisplaySamplerProperties bool
+	DisplaySystemProperties  bool
+}
+
+// Implement Extractor interface so it can be appended to sampler.Extractors
+func (e *DebugPostProcessor) RefName() string      { return "__DEBUG__" }
+func (e *DebugPostProcessor) DefaultValue() string { return "" }
+func (e *DebugPostProcessor) Extract(body []byte) (string, bool) {
+	return "", false
+}
+
+// Execute logs the debug information (called directly by the engine)
+func (e *DebugPostProcessor) Execute(vars map[string]string, props map[string]string) {
+	// In vjm, we print to standard out or use a simple logging mechanism.
+	// For load tests this is expensive, but we support it per user request.
+	var sb strings.Builder
+	sb.WriteString("\n============ Processor: " + e.Name + " ============\n")
+
+	if e.DisplayJMeterVariables {
+		sb.WriteString("[JMeterVariables]\n")
+		for k, v := range vars {
+			sb.WriteString(k + "=" + v + "\n")
+		}
+	}
+	if e.DisplayJMeterProperties {
+		sb.WriteString("JMeterProperties:\n")
+		for k, v := range props {
+			sb.WriteString(k + "=" + v + "\n")
+		}
+	}
+	sb.WriteString("========================================================\n")
+
+	// Just print it out
+	print(sb.String())
 }

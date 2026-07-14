@@ -488,7 +488,7 @@ Error Set:
 - [x] **JSON JMESPath Extractor**
 - [x] **Boundary Extractor**
 - ~~[ ] **JSR223 PostProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)
-- [ ] **Debug PostProcessor**
+- [x] **Debug PostProcessor**
 - ~~[ ] **JDBC PostProcessor**~~ (제외 - JVM/JDBC 종속)
 - [ ] **Result Status Action Handler**
 - [ ] **XPath Extractor**

@@ -136,6 +136,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentJMESPathExtractor *domain.JMESPathExtractor
 	var inBoundaryExtractor bool
 	var currentBoundaryExtractor *domain.BoundaryExtractor
+	var inDebugPostProcessor bool
+	var currentDebugPostProcessor *domain.DebugPostProcessor
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -615,6 +617,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentBoundaryExtractor = &domain.BoundaryExtractor{
 					MatchNo: 1,
 				}
+			} else if currentTag == "DebugPostProcessor" {
+				inDebugPostProcessor = true
+				currentDebugPostProcessor = &domain.DebugPostProcessor{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "ResponseAssertion" {
 				inResponseAssertion = true
 				currentResponseAssertion = &domain.ResponseAssertion{
@@ -934,6 +941,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentBoundaryExtractor = nil
+			} else if se.Name.Local == "DebugPostProcessor" {
+				inDebugPostProcessor = false
+				if currentDebugPostProcessor != nil && currentThreadGroup != nil {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						lastSampler.Extractors = append(lastSampler.Extractors, currentDebugPostProcessor)
+					}
+				}
+				currentDebugPostProcessor = nil
 			} else if se.Name.Local == "ResponseAssertion" {
 				inResponseAssertion = false
 				if currentResponseAssertion != nil && currentThreadGroup != nil {
@@ -1337,6 +1353,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if currentResultCollector != nil && nameAttr == "ResultCollector.error_logging" {
 					currentResultCollector.ErrorLogging = (val == "true")
 				}
+				if currentBoundaryExtractor != nil && nameAttr == "BoundaryExtractor.default_empty_value" {
+					currentBoundaryExtractor.DefaultEmptyValue = (val == "true")
+				}
+				if currentDebugPostProcessor != nil {
+					switch nameAttr {
+					case "displayJMeterVariables":
+						currentDebugPostProcessor.DisplayJMeterVariables = (val == "true")
+					case "displayJMeterProperties":
+						currentDebugPostProcessor.DisplayJMeterProperties = (val == "true")
+					case "displaySamplerProperties":
+						currentDebugPostProcessor.DisplaySamplerProperties = (val == "true")
+					case "displaySystemProperties":
+						currentDebugPostProcessor.DisplaySystemProperties = (val == "true")
+					}
+				}
 			case "intProp":
 				if currentCacheManager != nil && nameAttr == "maxSize" {
 					if v, err := strconv.Atoi(val); err == nil {
@@ -1679,10 +1710,6 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if inBoundaryExtractor && currentBoundaryExtractor != nil {
 						currentBoundaryExtractor.DefaultValueStr = val
 					}
-				case "BoundaryExtractor.default_empty_value":
-					if inBoundaryExtractor && currentBoundaryExtractor != nil {
-						currentBoundaryExtractor.DefaultEmptyValue = (val == "true")
-					}
 				case "RegexExtractor.refname":
 					if inRegexExtractor && currentRegexExtractor != nil {
 						currentRegexExtractor.ReferenceName = val
@@ -1855,6 +1882,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inHtmlExtractor
 					_ = inJMESPathExtractor
 					_ = inBoundaryExtractor
+					_ = inDebugPostProcessor
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

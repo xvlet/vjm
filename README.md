@@ -489,7 +489,7 @@ Error Set:
 - [x] **JSON JMESPath Extractor**
 - [x] **Boundary Extractor**
 - ~~[ ] **JSR223 PostProcessor**~~ (Excluded - JVM/Groovy script dependent)
-- [ ] **Debug PostProcessor**
+- [x] **Debug PostProcessor**
 - ~~[ ] **JDBC PostProcessor**~~ (Excluded - JVM/JDBC dependent)
 - [ ] **Result Status Action Handler**
 - [ ] **XPath Extractor**

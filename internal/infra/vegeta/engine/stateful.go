@@ -188,9 +188,14 @@ type RandomOrderState struct {
 
 func NewSession(id uint64, plan *domain.TestPlan, tg *domain.ThreadGroup, globalEval evaluator.Evaluator) *Session {
 	// Create a new evaluator for this session
+	vars := make(map[string]string)
+	for k, v := range plan.UserDefinedVariables {
+		vars[k] = v
+	}
+
 	return &Session{
 		ID:               id,
-		Variables:        make(map[string]string),
+		Variables:        vars,
 		Evaluator:        globalEval.Clone(),
 		Tg:               tg,
 		Step:             0,
@@ -1127,6 +1132,13 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							// Execute extractors
 							for _, ext := range sampler.Extractors {
 								if ext == nil {
+									continue
+								}
+
+								if dbgExt, ok := ext.(*domain.DebugPostProcessor); ok {
+									// In vjm, JMeter Properties and System Properties are not explicitly loaded.
+									// We only print JMeter Variables for now.
+									dbgExt.Execute(session.Variables, nil)
 									continue
 								}
 
