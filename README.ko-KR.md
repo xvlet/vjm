@@ -456,7 +456,7 @@ Error Set:
 - [x] **Aggregate Graph** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Assertion Results** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Comparison Assertion Visualizer** (GUI 렌더링 제외, 파일 출력 전용)
-- [ ] **Generate Summary Results**
+- [x] **Generate Summary Results** (동작은 vjm/Vegeta 기본 요약 출력으로 대체)
 - [ ] **Graph Results**
 - ~~[ ] **JSR223 Listener**~~ (제외 - JVM/Groovy 스크립트 종속)
 - [ ] **Mailer Visualizer**

@@ -46,6 +46,11 @@ type ResultCollector struct {
 	ErrorLogging bool // true if "ResultCollector.error_logging" is true
 }
 
+// Summariser represents a JMeter Generate Summary Results Listener
+type Summariser struct {
+	Name string
+}
+
 // BackendListener represents a JMeter Backend Listener
 type BackendListener struct {
 	Name      string
@@ -124,6 +129,7 @@ type TestPlan struct {
 	UserDefinedVariables map[string]string // UDV or User Parameters at Test Plan level
 	CSVDataSets          []*CSVDataSet
 	ResultCollectors     []*ResultCollector
+	Summarisers          []*Summariser
 	BackendListeners     []*BackendListener
 	CookieManager        *CookieManager
 	CacheManager         *CacheManager
@@ -202,6 +208,7 @@ type ThreadGroup struct {
 	Timers                 []*Timer
 	CSVDataSets            []*CSVDataSet
 	ResultCollectors       []*ResultCollector
+	Summarisers            []*Summariser
 	BackendListeners       []*BackendListener
 	CookieManager          *CookieManager
 	CacheManager           *CacheManager

@@ -457,7 +457,7 @@ Error Set:
 - [x] **Aggregate Graph** (File output only)
 - [x] **Assertion Results** (File output only)
 - [x] **Comparison Assertion Visualizer** (File output only)
-- [ ] **Generate Summary Results**
+- [x] **Generate Summary Results** (Replaced by default vjm/Vegeta output)
 - [ ] **Graph Results**
 - ~~[ ] **JSR223 Listener**~~ (Excluded - JVM/Groovy script dependent)
 - [ ] **Mailer Visualizer**

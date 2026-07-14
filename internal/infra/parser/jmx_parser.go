@@ -738,6 +738,17 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						plan.BackendListeners = append(plan.BackendListeners, currentBackendListener)
 					}
 				}
+			} else if currentTag == "Summariser" {
+				if enabledAttr != "false" {
+					sum := &domain.Summariser{
+						Name: testNameAttr,
+					}
+					if currentThreadGroup != nil {
+						currentThreadGroup.Summarisers = append(currentThreadGroup.Summarisers, sum)
+					} else {
+						plan.Summarisers = append(plan.Summarisers, sum)
+					}
+				}
 			} else if currentTag == "CookieManager" {
 				if enabledAttr != "false" {
 					currentCookieManager = &domain.CookieManager{}
