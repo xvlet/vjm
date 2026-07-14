@@ -53,12 +53,11 @@ flowchart LR
 
 ## 지원하지 않는 JMeter 기능 (아키텍처 제약 사항)
 
-`vjm`은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 Vegeta의 **"비율(Rate) 기반의 무상태(Stateless) 모델"**로 변환하여 부하를 발생시킵니다. 따라서 쓰레드별 제어나 개별 요청 간의 상태 전이에 크게 의존하는 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
+`vjm`은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 기반으로 부하를 발생시킵니다. 하지만 네이티브 Go 언어로 구현된 특성상 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
 
-*   **복잡한 흐름 제어 로직 (If, While, Loop, ForEach Controller 등)**: Vegeta는 준비된 타겟들을 병렬로 발사하는 엔진이므로, 이전 요청의 응답 결과에 따라 다음 요청을 조건부로 분기하거나 동적으로 루프를 제어할 수 없습니다.
-*   **JVM 종속 요소 (JSR223, BeanShell, JDBC 등)**: `vjm`은 Go 언어로 작성된 네이티브 애플리케이션이므로 Java 가상 머신(JVM)을 내장하지 않습니다. 따라서 Java 스크립트 실행이나 JDBC 드라이버가 필요한 요소는 지원하지 않습니다.
+*   **JVM 종속 요소 (JSR223, BeanShell, JDBC 등)**: `vjm`은 네이티브 애플리케이션이므로 Java 가상 머신(JVM)을 내장하지 않습니다. 따라서 Java 스크립트 실행이나 JDBC 드라이버가 필요한 요소는 지원하지 않습니다.
 
-*(참고: Extractor를 활용한 변수 체이닝, HTTP Cookie Manager, 각종 Timer 및 Assertion(검증) 기능 등 필수적인 상태 유지 및 제어 기능들은 `vjm`의 자체적인 Stateful 엔진 모드를 통해 현재 완벽하게 지원됩니다.)*
+*(참고: 복잡한 흐름 제어 로직 (If, While, Loop, ForEach Controller 등), Extractor를 활용한 변수 체이닝, HTTP Cookie Manager, 각종 Timer 및 Assertion(검증) 기능 등 필수적인 상태 유지 및 제어 기능들은 `vjm`의 자체적인 Stateful 엔진 모드를 통해 현재 완벽하게 지원됩니다.)*
 
 ---
 

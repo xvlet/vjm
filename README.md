@@ -54,12 +54,11 @@ flowchart LR
 
 ## Unsupported JMeter Features (Architectural Limitations)
 
-Because `vjm` translates JMeter's **Thread-based, sequential state** model into Vegeta's **Rate-based, stateless** model, certain JMeter elements that rely heavily on per-thread flow control or inter-request state are inherently unsupported or only partially supported:
+Because `vjm` translates JMeter's **Thread-based, sequential state** model into Vegeta's engine, some JMeter elements heavily reliant on JVM infrastructure remain unsupported:
 
-*   **Complex Logic Controllers (e.g., If, While, Loop, ForEach)**: Vegeta fires predefined targets continuously. It cannot conditionally branch or loop dynamically based on the outcome of a previous request within a single worker's flow.
 *   **JVM-Dependent Elements (e.g., JSR223, BeanShell, JDBC)**: `vjm` is a native Go application and does not embed a Java Virtual Machine. Elements requiring Java script execution or JDBC drivers are not supported.
 
-*(Note: Essential stateful features like Extractors, HTTP Cookie Manager, Timers, and Assertions **ARE** fully supported via `vjm`'s internal engine enhancements.)*
+*(Note: Essential stateful features like Complex Logic Controllers (If, While, Loop, ForEach), Extractors, HTTP Cookie Manager, Timers, and Assertions **ARE** fully supported via `vjm`'s internal engine enhancements.)*
 
 ---
 
