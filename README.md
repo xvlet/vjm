@@ -394,7 +394,7 @@ Error Set:
 - [x] **Multi-Sampler Support**: Handle multiple HTTPSamplers within a ThreadGroup based on weights
 - [x] **Stateful Variable Chaining (Extractors)**: Support sequential scenarios by extracting values from previous responses and injecting them into subsequent requests
 - [x] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
-- [ ] **WebSocket Support**: Integrate WS protocol load testing
+- [x] **WebSocket Support**: Integration for WS protocol load testing
 - [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
 
 ### Thread Group Support

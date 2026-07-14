@@ -393,7 +393,7 @@ Error Set:
 - [x] **다중 Sampler 지원**: ThreadGroup 내 여러 HTTPSampler를 가중치 기반으로 처리
 - [x] **Stateful 변수 체이닝 (Extractor)**: 이전 요청의 응답에서 값을 추출하여 다음 요청에 주입하는 순차적 시나리오 지원
 - [x] **JMeter CSV DataSet 지원**: `CSVDataSet`에서 요청별 다른 파라미터 주입
-- [ ] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
+- [x] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
 - [x] **실시간 콘솔 대시보드**: 테스트 진행 중 실시간 TPS / 응답시간 모니터링
 
 ### 쓰레드 그룹(Thread Group) 지원 현황

@@ -53,6 +53,14 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 		atkOpts = append(atkOpts, vegeta.MaxConnections(10000))
 		atkOpts = append(atkOpts, vegeta.Timeout(30*time.Second))
 
+		customClient := &http.Client{
+			Transport: &WSRoundTripper{
+				Fallback: http.DefaultTransport,
+			},
+			Timeout: 30 * time.Second,
+		}
+		atkOpts = append(atkOpts, vegeta.Client(customClient))
+
 		standardAttacker := vegeta.NewAttacker(atkOpts...)
 
 		var executableTgs []*domain.ThreadGroup

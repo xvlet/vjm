@@ -562,7 +562,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				}
 
 				sessionClient := &http.Client{
-					Transport: a.transport,
+					Transport: &WSRoundTripper{Fallback: a.transport},
 					Timeout:   30 * time.Second,
 					Jar:       createCookieJar(),
 				}

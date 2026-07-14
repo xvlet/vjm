@@ -466,7 +466,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
-			} else if currentTag == "HTTPSamplerProxy" {
+			} else if currentTag == "HTTPSamplerProxy" || strings.Contains(currentTag, "WebSocketSampler") {
 				activeIfCondition := ""
 				var conditions []string
 				for d := 1; d <= hashTreeDepth; d++ {
@@ -1191,7 +1191,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentAuthorization = nil
 			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
 				currentTimer = nil
-			} else if se.Name.Local == "HTTPSamplerProxy" && currentReq != nil {
+			} else if (se.Name.Local == "HTTPSamplerProxy" || strings.Contains(se.Name.Local, "WebSocketSampler")) && currentReq != nil {
 				// Build the URL now. Keep currentReq alive so the following
 				// HeaderManager (inside sibling hashTree) can still attach headers.
 				pcol := protocolVal
@@ -1616,10 +1616,22 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					} else {
 						protocolVal = val
 					}
-				case "HTTPSampler.method":
+				case "HTTPSampler.method", "method":
 					if currentReq != nil {
 						currentReq.Method = val
 					}
+				case "server", "serverAddress":
+					domainVal = val
+				case "port", "serverPort":
+					portVal = val
+				case "path", "contextPath":
+					pathVal = val
+				case "requestPayload":
+					if currentReq != nil {
+						currentReq.BodyTemplate = val
+					}
+				case "TLS", "protocol":
+					protocolVal = val
 				case "ThreadGroup.num_threads":
 					if currentThreadGroup != nil {
 						v, _ := strconv.Atoi(val)
