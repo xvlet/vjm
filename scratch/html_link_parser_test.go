@@ -4,32 +4,36 @@ import (
 	"testing"
 
 	"github.com/xvlet/vjm/internal/domain"
-	"github.com/xvlet/vjm/internal/infra/parser"
+	"github.com/xvlet/vjm/internal/evaluator"
+	"github.com/xvlet/vjm/internal/infra/vegeta/engine"
 )
 
-func TestHTMLLinkParserParse(t *testing.T) {
-	p := parser.NewDefaultJmxParser()
-	plan, err := p.Parse("../tests/pre-processors/test_html_link_parser.jmx")
-	if err != nil {
-		t.Fatalf("Failed to parse JMX: %v", err)
+func TestHTMLLinkParserEngine(t *testing.T) {
+	eval := evaluator.NewDefaultEvaluator(map[string]string{})
+	session := engine.NewSession(1, &domain.TestPlan{}, &domain.ThreadGroup{}, eval)
+
+	session.LastResponseBody = []byte(`
+		<html>
+		<body>
+			<a href="/test/item/12345">Click here</a>
+			<form action="/login/submit">...</form>
+		</body>
+		</html>
+	`)
+
+	sampler := &domain.Sampler{
+		Name: "Req2",
+		Request: &domain.RequestTemplate{
+			URL: "/test/item/.*",
+		},
+		PreProcessors: []domain.PreProcessor{
+			&domain.HTMLLinkParser{Name: "HTMLLinkParser"},
+		},
 	}
 
-	if len(plan.ThreadGroups) == 0 {
-		t.Fatalf("No thread groups found")
-	}
+	engine.EvaluatePreProcessors(session, sampler)
 
-	tg := plan.ThreadGroups[0]
-	if len(tg.Samplers) < 1 {
-		t.Fatalf("Expected at least 1 sampler, got %d", len(tg.Samplers))
-	}
-
-	// Req1
-	req1 := tg.Samplers[0]
-	if len(req1.PreProcessors) == 0 {
-		t.Fatalf("Req1 missing PreProcessors")
-	}
-	_, ok := req1.PreProcessors[0].(*domain.HTMLLinkParser)
-	if !ok {
-		t.Fatalf("Req1 PreProcessor is not HTMLLinkParser")
+	if sampler.Request.URL != "/test/item/12345" {
+		t.Errorf("Expected URL to be mutated to /test/item/12345, got %s", sampler.Request.URL)
 	}
 }

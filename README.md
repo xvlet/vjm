@@ -475,8 +475,8 @@ Error Set:
 ### Pre Processors
 - [x] **User Parameters**
 - ~~[ ] **JSR223 PreProcessor**~~ (Excluded - JVM/Groovy script dependent)
-- [x] **HTML Link Parser**
-- [ ] **HTTP URL Re-writing Modifier**
+- [x] **HTML Link Parser** (Not recommended due to performance overhead, use Regex Extractor instead)
+- [x] **HTTP URL Re-writing Modifier** (Not recommended due to performance overhead, use Regex Extractor instead)
 - ~~[ ] **JDBC PreProcessor**~~ (Excluded - JVM/JDBC dependent)
 - [ ] **RegEx User Parameters**
 - [ ] **Sample Timeout**

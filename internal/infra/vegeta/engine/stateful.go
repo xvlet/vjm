@@ -156,6 +156,7 @@ var bufferPool = sync.Pool{
 }
 
 var globalLocks sync.Map
+var htmlLinkRegex = regexp.MustCompile(`(?i)(?:href|action)\s*=\s*["']([^"']+)["']`)
 
 // Session represents a virtual user executing a Thread Group sequentially
 type Session struct {
@@ -172,6 +173,7 @@ type Session struct {
 	RuntimeDeadlines map[int]time.Time
 	CallStack        []CallFrame
 	Plan             *domain.TestPlan
+	LastResponseBody []byte
 }
 
 type CallFrame struct {
@@ -1000,18 +1002,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							time.Sleep(totalDelay)
 						}
 
-						// Execute PreProcessors
-						for _, preProc := range sampler.PreProcessors {
-							switch p := preProc.(type) {
-							case *domain.HTMLLinkParser:
-								// In JMeter, HTMLLinkParser parses the previous response HTML and replaces
-								// the current sampler's parameters or paths with matching links.
-								// In vjm's concurrent high-throughput model, this real-time DOM parsing
-								// and dynamic sampler mutation is highly expensive and complex.
-								// For now, we stub this out as a no-op to allow the load test to proceed.
-								_ = p
-							}
-						}
+						EvaluatePreProcessors(session, sampler)
 
 						// Evaluate variables in URL
 						url := session.Evaluator.Evaluate(sampler.Request.URL)
@@ -1081,7 +1072,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						var bodyBytes []byte
 						if err == nil {
 							res.Code = uint16(resp.StatusCode)
-							needsBody := len(sampler.Extractors) > 0 || len(sampler.Assertions) > 0
+							needsBody := true // Always read body in stateful mode for subsequent PreProcessors (like HTMLLinkParser)
 
 							bufPtr := bufferPool.Get().(*[]byte)
 							buf := *bufPtr
@@ -1100,6 +1091,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 							_ = resp.Body.Close()  // Close 먼저 (읽기 완료 보장)
 							bufferPool.Put(bufPtr) // 그 다음 Pool 반환
+
+							session.LastResponseBody = bodyBytes
 
 							if cacheManager != nil && (resp.StatusCode == 200 || resp.StatusCode == 304) {
 								etag := resp.Header.Get("ETag")
@@ -1435,4 +1428,60 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 		return nil
 	}
 	return nil
+}
+
+// EvaluatePreProcessors evaluates the preprocessors for a given sampler.
+// Exported for testing purposes.
+func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) {
+	for _, preProc := range sampler.PreProcessors {
+		switch p := preProc.(type) {
+		case *domain.HTMLLinkParser:
+			if len(session.LastResponseBody) > 0 {
+				matches := htmlLinkRegex.FindAllSubmatch(session.LastResponseBody, -1)
+				if len(matches) > 0 {
+					evalUrl := session.Evaluator.Evaluate(sampler.Request.URL)
+					if rx, err := regexp.Compile("^" + evalUrl + "$"); err == nil {
+						for _, m := range matches {
+							link := string(m[1])
+							if rx.MatchString(link) {
+								sampler.Request.URL = link
+								break
+							}
+						}
+					}
+				}
+			}
+		case *domain.URLRewritingModifier:
+			if len(session.LastResponseBody) > 0 && p.ArgumentName != "" {
+				rxStr := fmt.Sprintf(`(?i)%s\s*=\s*(?:["']([^"']+)["']|([^"'>&\s]+))`, regexp.QuoteMeta(p.ArgumentName))
+				if rx, err := regexp.Compile(rxStr); err == nil {
+					m := rx.FindSubmatch(session.LastResponseBody)
+					if len(m) > 0 {
+						val := string(m[1])
+						if val == "" && len(m) > 2 {
+							val = string(m[2])
+						}
+						if val != "" {
+							evalUrl := session.Evaluator.Evaluate(sampler.Request.URL)
+							if p.PathExtension {
+								sep := ";"
+								if p.PathExtensionNoEq {
+									evalUrl += sep + p.ArgumentName + val
+								} else {
+									evalUrl += sep + p.ArgumentName + "=" + val
+								}
+							} else {
+								sep := "?"
+								if strings.Contains(evalUrl, "?") {
+									sep = "&"
+								}
+								evalUrl += sep + p.ArgumentName + "=" + val
+							}
+							sampler.Request.URL = evalUrl
+						}
+					}
+				}
+			}
+		}
+	}
 }

@@ -474,8 +474,8 @@ Error Set:
 ### Pre Processors (전처리기)
 - [x] **User Parameters**
 - ~~[ ] **JSR223 PreProcessor**~~ (제외 - JVM/Groovy 스크립트 종속)
-- [x] **HTML Link Parser**
-- [ ] **HTTP URL Re-writing Modifier**
+- [x] **HTML Link Parser** (성능 저하 우려로 사용 비권장, 정규식 추출기 사용 권장)
+- [x] **HTTP URL Re-writing Modifier** (성능 저하 우려로 사용 비권장, 정규식 추출기 사용 권장)
 - ~~[ ] **JDBC PreProcessor**~~ (제외 - JVM/JDBC 종속)
 - [ ] **RegEx User Parameters**
 - [ ] **Sample Timeout**

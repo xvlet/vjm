@@ -124,6 +124,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentSMIMEAssertion *domain.SMIMEAssertion
 	var currentXMLAssertion *domain.XMLAssertion
 	var currentHTMLLinkParser *domain.HTMLLinkParser
+	var inURLRewritingModifier bool
+	var currentURLRewritingModifier *domain.URLRewritingModifier
 
 	var inUltimateData bool
 	var inUltimateRow bool
@@ -638,6 +640,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentHTMLLinkParser = &domain.HTMLLinkParser{
 					Name: testNameAttr,
 				}
+			} else if currentTag == "URLRewritingModifier" {
+				inURLRewritingModifier = true
+				currentURLRewritingModifier = &domain.URLRewritingModifier{
+					Name: testNameAttr,
+				}
 			} else if currentTag == "CSVDataSet" {
 				if enabledAttr != "false" {
 					currentCSVDataSet = &domain.CSVDataSet{
@@ -981,6 +988,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 				currentHTMLLinkParser = nil
+			} else if se.Name.Local == "URLRewritingModifier" {
+				inURLRewritingModifier = false
+				if currentURLRewritingModifier != nil && currentThreadGroup != nil {
+					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
+					if lastSamplerIdx >= 0 {
+						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
+						lastSampler.PreProcessors = append(lastSampler.PreProcessors, currentURLRewritingModifier)
+					}
+				}
+				currentURLRewritingModifier = nil
 			} else if se.Name.Local == "CSVDataSet" {
 				currentCSVDataSet = nil
 			} else if se.Name.Local == "CookieManager" {
@@ -1131,6 +1148,20 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				if nameAttr == "HTTPSampler.postBodyRaw" && val == "true" {
 					postBodyRaw = true
+				}
+				if currentURLRewritingModifier != nil {
+					switch nameAttr {
+					case "path_extension":
+						currentURLRewritingModifier.PathExtension = (val == "true")
+					case "path_extension_no_equals":
+						currentURLRewritingModifier.PathExtensionNoEq = (val == "true")
+					case "path_extension_no_questionmark":
+						currentURLRewritingModifier.PathExtensionNoQuestionMark = (val == "true")
+					case "cache_value":
+						currentURLRewritingModifier.ShouldCache = (val == "true")
+					case "encode":
+						currentURLRewritingModifier.Encode = (val == "true")
+					}
 				}
 				if currentCSVDataSet != nil {
 					switch nameAttr {
@@ -1625,6 +1656,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if currentRandomVariable != nil {
 						currentRandomVariable.Name = val
 					}
+				case "argument_name":
+					if inURLRewritingModifier && currentURLRewritingModifier != nil {
+						currentURLRewritingModifier.ArgumentName = val
+					}
 				case "classname":
 					if currentBackendListener != nil {
 						currentBackendListener.Classname = val
@@ -1644,6 +1679,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inSMIMEAssertion
 					_ = inXMLAssertion
 					_ = inHTMLLinkParser
+					_ = inURLRewritingModifier
 
 					if inDNSServers && currentDNSCacheManager != nil {
 						currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)

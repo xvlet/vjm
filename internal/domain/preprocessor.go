@@ -11,3 +11,16 @@ type HTMLLinkParser struct {
 }
 
 func (*HTMLLinkParser) IsPreProcessor() bool { return true }
+
+// URLRewritingModifier represents the JMeter HTTP URL Re-writing Modifier
+type URLRewritingModifier struct {
+	Name                        string
+	ArgumentName                string
+	PathExtension               bool
+	PathExtensionNoEq           bool
+	PathExtensionNoQuestionMark bool
+	ShouldCache                 bool
+	Encode                      bool
+}
+
+func (*URLRewritingModifier) IsPreProcessor() bool { return true }
