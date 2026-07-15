@@ -556,8 +556,16 @@ func (e *XPathExtractor) DefaultValue() string {
 }
 
 func (e *XPathExtractor) Extract(body []byte) (string, bool) {
-	// Not used directly if ExtractMulti is available and handles singular correctly.
-	// But we'll implement it to satisfy Extractor interface if MultiExtractor fails.
+	res, ok := e.ExtractMulti(body)
+	if !ok || len(res) == 0 {
+		return "", false
+	}
+	if val, exists := res[e.ReferenceName]; exists {
+		return val, true
+	}
+	if val, exists := res[e.ReferenceName+"_1"]; exists {
+		return val, true
+	}
 	return "", false
 }
 

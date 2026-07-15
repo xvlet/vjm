@@ -222,9 +222,9 @@ type FreeFormArrivalsConfig struct {
 type ThreadGroup struct {
 	Name                   string
 	ActionType             string // "setup", "main", "teardown"
-	NumThreads             int    // TODO: use for per-thread rate control when SteppingThreadGroup is implemented
-	RampUp                 int    // TODO: seconds to ramp up to full load
-	Duration               int    // TODO: total duration per step
+	NumThreads             int    // Number of threads to run
+	RampUp                 int    // Seconds to ramp up to full load
+	Duration               int    // Total duration of the test
 	Loops                  int    // Parsed from LoopController.loops
 	ContinueForever        bool   // Parsed from LoopController.continue_forever
 	Samplers               []*Sampler

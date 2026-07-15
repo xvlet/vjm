@@ -164,16 +164,23 @@ func (e *DefaultEvaluator) Evaluate(template string) string {
 			// Find the matching '}' considering nested '{' and '}'
 			depth := 1
 			end := -1
-			for i := start + 2; i < len(rest); i++ {
-				if rest[i] == '{' {
+			curr := start + 2
+			for curr < len(rest) {
+				idx := strings.IndexAny(rest[curr:], "{}")
+				if idx == -1 {
+					break
+				}
+				curr += idx
+				if rest[curr] == '{' {
 					depth++
-				} else if rest[i] == '}' {
+				} else {
 					depth--
 					if depth == 0 {
-						end = i
+						end = curr
 						break
 					}
 				}
+				curr++
 			}
 
 			if end == -1 {
@@ -549,7 +556,9 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 		varName := args[1]
 		delim := ","
 		if len(args) > 2 {
-			delim = args[2]
+			if args[2] != "" {
+				delim = args[2]
+			}
 		}
 		tokens := strings.Split(str, delim)
 		e.mu.Lock()
