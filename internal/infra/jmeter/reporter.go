@@ -120,13 +120,15 @@ func (r *Reporter) ConvertToJTL(binPath, jtlPath string) error {
 				label = "HTTP_Request"
 			}
 
-			_ = writer.Write([]string{
+			if err := writer.Write([]string{
 				strconv.FormatInt(ts, 10),
 				strconv.FormatInt(lat, 10),
 				label,
 				codeStr, msg, "Vegeta-1-1", "text", success, res.Error,
 				strconv.FormatUint(res.BytesIn, 10), strconv.FormatUint(res.BytesOut, 10), "1", "1", res.URL, strconv.FormatInt(lat, 10), "0", "0",
-			})
+			}); err != nil {
+				log.Printf("[JmeterReporter] Warning: failed to write JTL row for %s: %v", res.URL, err)
+			}
 		}
 		_ = f.Close()
 	}
@@ -168,4 +170,24 @@ func (r *Reporter) GenerateHTML(jtlPath, reportDir string, granularity int) erro
 
 	log.Printf("[JmeterReporter] Generating HTML report to %s...", reportDir)
 	return cmd.Run()
+}
+
+func (r *Reporter) CopyResult(src, dst string) error {
+	if src == dst {
+		return nil
+	}
+	source, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = source.Close() }()
+
+	destination, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = destination.Close() }()
+
+	_, err = io.Copy(destination, source)
+	return err
 }

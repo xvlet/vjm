@@ -2060,7 +2060,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					_ = inURLRewritingModifier
 					_ = inRegExUserParameters
 					_ = inSampleTimeout
-					_ = inHtmlExtractor
+
 					_ = inJMESPathExtractor
 					_ = inBoundaryExtractor
 					_ = inDebugPostProcessor

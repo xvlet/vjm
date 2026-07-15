@@ -62,7 +62,9 @@ func SaveResponsesIfNeeded(binPath string, savers []*domain.ResultSaver) error {
 				filename = fmt.Sprintf("%s%d", prefix, seq)
 			}
 			if !saver.SkipSuffix {
-				filename += ".unknown" // Default extension
+				// vjm does not have Content-Type headers available in the binary result;
+				// use .bin as the default extension (JMeter would derive this from Content-Type).
+				filename += ".bin"
 			}
 
 			// Ensure directory exists if prefix contains path

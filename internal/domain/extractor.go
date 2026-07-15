@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"regexp"
 	"strconv"
@@ -14,6 +15,24 @@ import (
 	"github.com/jmespath/go-jmespath"
 	"github.com/oliveagle/jsonpath"
 )
+
+// resolveMatchIndex computes the match index.
+func resolveMatchIndex(matchNo, resultsLen int) (int, bool) {
+	if resultsLen == 0 {
+		return 0, false
+	}
+	if matchNo < 0 {
+		return 0, false // should be handled by ExtractMulti
+	}
+	if matchNo == 0 {
+		return rand.IntN(resultsLen), true
+	}
+	matchIdx := matchNo - 1
+	if matchIdx >= 0 && matchIdx < resultsLen {
+		return matchIdx, true
+	}
+	return 0, true // Fallback to first match for out-of-bounds, preserving existing behavior
+}
 
 // Extractor defines the interface for JMeter PostProcessors
 type Extractor interface {
@@ -61,19 +80,9 @@ func (e *RegexExtractor) Extract(body []byte) (string, bool) {
 		return "", false
 	}
 
-	matchIdx := e.MatchNo - 1
-	if e.MatchNo == 0 {
-		// JMeter: MatchNo=0 → random selection among all matches
-		matchIdx = rand.IntN(len(matches))
-	} else if e.MatchNo < 0 {
-		// JMeter: MatchNo=-1 → match all (populate _1, _2 etc.)
-		// Multi-variable population requires session-level handling.
-		// For single-value extract, fall back to the first match.
-		matchIdx = 0
-	}
-
-	if matchIdx < 0 || matchIdx >= len(matches) {
-		matchIdx = 0 // fallback
+	matchIdx, ok := resolveMatchIndex(e.MatchNo, len(matches))
+	if !ok {
+		return "", false
 	}
 
 	match := matches[matchIdx]
@@ -94,9 +103,10 @@ func (e *RegexExtractor) Extract(body []byte) (string, bool) {
 	return string(match[0]), true
 }
 
-// ExtractMulti handles MatchNo < 0 (all matches)
+// ExtractMulti handles MatchNo == -1 (all matches)
 func (e *RegexExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
-	if e.MatchNo >= 0 {
+	// MatchNo == -1 means "all matches"; 0 means random single, >0 means Nth single
+	if e.MatchNo != -1 {
 		return nil, false
 	}
 	if e.compiledRegex == nil {
@@ -146,21 +156,16 @@ func (e *JSONExtractor) Extract(body []byte) (string, bool) {
 		return "", false
 	}
 
-	matchIdx := e.MatchNo - 1
-	if e.MatchNo == 0 {
-		matchIdx = rand.IntN(len(results))
-	} else if e.MatchNo < 0 {
-		matchIdx = 0
-	}
-
-	if matchIdx < 0 || matchIdx >= len(results) {
-		matchIdx = 0
+	matchIdx, ok := resolveMatchIndex(e.MatchNo, len(results))
+	if !ok {
+		return "", false
 	}
 	return results[matchIdx], true
 }
 
 func (e *JSONExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
-	if e.MatchNo >= 0 {
+	// MatchNo == -1 means "all matches"; 0 means random single, >0 means Nth single
+	if e.MatchNo != -1 {
 		return nil, false
 	}
 	results, ok := EvaluateJSONPathMulti(body, e.JSONPathExpr)
@@ -287,18 +292,11 @@ func (e *HtmlExtractor) Extract(body []byte) (string, bool) {
 		return "", false
 	}
 
-	matchIdx := e.MatchNo - 1
-	switch e.MatchNo {
-	case 0:
-		matchIdx = rand.IntN(len(results))
-	case -1:
-		return "", false // Should be handled by ExtractMulti
+	matchIdx, ok := resolveMatchIndex(e.MatchNo, len(results))
+	if !ok {
+		return "", false
 	}
-
-	if matchIdx >= 0 && matchIdx < len(results) {
-		return results[matchIdx], true
-	}
-	return "", false
+	return results[matchIdx], true
 }
 
 func (e *HtmlExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
@@ -363,18 +361,11 @@ func (e *JMESPathExtractor) Extract(body []byte) (string, bool) {
 		return "", false
 	}
 
-	matchIdx := e.MatchNo - 1
-	switch e.MatchNo {
-	case 0:
-		matchIdx = rand.IntN(len(results))
-	case -1:
-		return "", false // Should be handled by ExtractMulti
+	matchIdx, ok := resolveMatchIndex(e.MatchNo, len(results))
+	if !ok {
+		return "", false
 	}
-
-	if matchIdx >= 0 && matchIdx < len(results) {
-		return results[matchIdx], true
-	}
-	return "", false
+	return results[matchIdx], true
 }
 
 func (e *JMESPathExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
@@ -451,18 +442,11 @@ func (e *BoundaryExtractor) Extract(body []byte) (string, bool) {
 		return "", false
 	}
 
-	matchIdx := e.MatchNo - 1
-	switch e.MatchNo {
-	case 0:
-		matchIdx = rand.IntN(len(results))
-	case -1:
-		return "", false // Handled by ExtractMulti
+	matchIdx, ok := resolveMatchIndex(e.MatchNo, len(results))
+	if !ok {
+		return "", false
 	}
-
-	if matchIdx >= 0 && matchIdx < len(results) {
-		return results[matchIdx], true
-	}
-	return "", false
+	return results[matchIdx], true
 }
 
 func (e *BoundaryExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
@@ -521,8 +505,7 @@ func (e *DebugPostProcessor) Execute(vars map[string]string, props map[string]st
 	}
 	sb.WriteString("========================================================\n")
 
-	// Just print it out
-	print(sb.String())
+	fmt.Print(sb.String())
 }
 
 // ResultAction represents JMeter's Result Status Action Handler
@@ -614,9 +597,8 @@ func (e *XPathExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
 		return nil, false
 	}
 
-	// MatchNumber < 0 (All)
-	res[e.ReferenceName] = matches[0] // Default behavior for refName itself? Actually refName gets the default value in JMeter if matchNo < 0? No, JMeter usually sets refName_matchNr and refName_1, etc. But if it follows JMeter, it doesn't set refName without suffix for MatchNo < 0 unless there's only 1 match.
-	// To be consistent with RegexExtractor in vjm:
+	// MatchNumber < 0 means "All": populate refName_matchNr and refName_1..N,
+	// consistent with JMeter behaviour and other extractors (RegexExtractor, etc.).
 	res[e.ReferenceName+"_matchNr"] = strconv.Itoa(len(matches))
 	for i, m := range matches {
 		res[e.ReferenceName+"_"+strconv.Itoa(i+1)] = m
