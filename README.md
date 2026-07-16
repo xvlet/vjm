@@ -537,3 +537,8 @@ MIT License — see [LICENSE](LICENSE) for details.
 <p align="center">
   <b>vjm</b> — Write with JMeter. Attack with Vegeta. ⚡
 </p>
+
+<p align="center">
+  ❤️ Support this project<br>
+  <a href="https://ko-fi.com/xvlet"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi"></a>
+</p>
