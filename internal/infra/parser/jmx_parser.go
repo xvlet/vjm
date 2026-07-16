@@ -207,7 +207,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					enabledAttr = attr.Value
 				}
 			}
-			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController" || currentTag == "TestFragmentController") {
+			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController" || currentTag == "TestFragmentController" || currentTag == "TestPlan") {
 				nameAttr = testNameAttr
 			}
 
@@ -435,6 +435,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					})
 					pendingRandomOrderId = 0
 				}
+			}
+
+			if currentTag == "TestPlan" {
+				plan.Name = nameAttr
 			}
 
 			if strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "TestFragmentController" {
