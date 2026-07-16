@@ -45,7 +45,8 @@ func TestForEach(t *testing.T) {
 		},
 	}
 
-	session := engine.NewSession(0, nil, tg, globalEval)
+	plan := &domain.TestPlan{}
+	session := engine.NewSession(0, plan, tg, globalEval)
 
 	// manually run step 0 (ForEachStart)
 	sampler := tg.Samplers[0]

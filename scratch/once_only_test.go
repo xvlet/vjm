@@ -39,8 +39,8 @@ func TestOnceOnlyController(t *testing.T) {
 	expectedURLs := []string{
 		"http://127.0.0.1:58080/test/controller/onceonly/req1",
 		"http://127.0.0.1:58080/test/controller/onceonly/req2",
-		"http://127.0.0.1:58080/test/controller/onceonly/req2",
-		"http://127.0.0.1:58080/test/controller/onceonly/req2",
+		"http://127.0.0.1:58080/test/controller/onceonly/req1",
+		"http://127.0.0.1:58080/test/controller/onceonly/req1",
 	}
 
 	var executionURLs []string
