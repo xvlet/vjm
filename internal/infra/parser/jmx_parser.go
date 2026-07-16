@@ -1508,6 +1508,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentTimer.TimeoutInMs = val
 					}
 				}
+				if currentCompareAssertion != nil && nameAttr == "CompareAssertion.compareTime" {
+					if v, err := strconv.Atoi(val); err == nil {
+						currentCompareAssertion.CompareTime = v
+					}
+				}
 			case "stringProp":
 				if inUltimateRow {
 					ultimateRowVals = append(ultimateRowVals, val)
