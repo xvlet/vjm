@@ -113,26 +113,21 @@ chmod +x vjm
 ./vjm -h
 ```
 ### 4. Docker 사용
-호스트 환경에 아무것도 설치하지 않고 도커를 통해 `vjm`을 실행할 수 있습니다. 이를 위해 초경량 다중 스테이지(multi-stage) 빌드가 적용된 `Dockerfile`을 제공합니다.
+호스트 환경에 아무것도 설치하지 않고 도커를 통해 `vjm`을 실행할 수 있습니다. 공식 이미지는 GitHub Container Registry(GHCR)를 통해 자동 배포됩니다.
 
-먼저, 소스 코드를 다운로드할 필요 없이 GitHub 저장소에서 직접 Docker 이미지를 빌드합니다:
+정상적으로 작동하는지 도움말 명령어로 확인해 볼 수 있습니다:
 ```bash
-docker build -t xvlet/vjm https://github.com/xvlet/vjm.git
-```
-
-먼저, 정상적으로 작동하는지 도움말 명령어로 확인해 볼 수 있습니다:
-```bash
-docker run --rm xvlet/vjm -h
+docker run --rm ghcr.io/xvlet/vjm -h
 ```
 
 실제 부하 테스트를 실행하려면 `.jmx` 파일이 있는 현재 로컬 디렉토리를 컨테이너에 마운트해야 합니다.
 **주의:** 부하 테스트 리포트와 로그는 정확한 타임스탬프가 필수적이므로, `-e TZ` 환경 변수를 사용해 컨테이너의 시간대를 호스트(예: 한국 시간)와 맞추는 것을 강력히 권장합니다.
 ```bash
 # Linux/macOS 환경
-docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
+docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
 
 # Windows (PowerShell) 환경
-docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
+docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
 ```
 
 ---
