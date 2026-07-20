@@ -1,7 +1,7 @@
 # ==========================================
 # Stage 1: Builder
 # ==========================================
-FROM golang:1.25.5-alpine AS builder
+FROM golang:1.25.12-alpine AS builder
 
 # Install necessary system packages for build (timezone data, certificates, git)
 RUN apk update && apk add --no-cache git tzdata ca-certificates
