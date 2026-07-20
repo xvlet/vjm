@@ -12,12 +12,12 @@ Write-Host "__   _(_) _ __ ___  "
 Write-Host "\ \ / / || '_ \` _ \ "
 Write-Host " \ V /| || | | | | |"
 Write-Host "  \_/ | ||_| |_| |_|"
-Write-Host "     _/ |         vjm installer"
+Write-Host "     _/ |         vjm installer ⚡"
 Write-Host "    |__/          github.com/$REPO"
 Write-Host ""
 
 # Detect Architecture
-$Arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'AMD64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'AMD64') { "x86_64" } else { "arm64" }
+$Arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'AMD64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'AMD64') { "amd64" } else { "arm64" }
 $Target = "windows_$Arch"
 
 Write-Host "  > detected windows/$Arch" -ForegroundColor Green
@@ -91,9 +91,10 @@ $SysPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
 
 if (($UserPath -notmatch [regex]::Escape($InstallDir)) -and ($SysPath -notmatch [regex]::Escape($InstallDir))) {
     Write-Host ""
-    Write-Host "  ! $InstallDir is not in your PATH" -ForegroundColor Yellow
-    Write-Host "    You can add it by running:"
-    Write-Host "    [Environment]::SetEnvironmentVariable('PATH', [Environment]::GetEnvironmentVariable('PATH', 'User') + ';$InstallDir', 'User')"
+    Write-Host "  > adding $InstallDir to your PATH..." -ForegroundColor Green
+    $NewPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $InstallDir } else { "$UserPath;$InstallDir" }
+    [Environment]::SetEnvironmentVariable('PATH', $NewPath, 'User')
+    Write-Host "  ! Please restart your terminal to apply the new PATH." -ForegroundColor Yellow
 }
 
 Write-Host ""

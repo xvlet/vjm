@@ -9,10 +9,10 @@ main() {
     echo ""
     echo "       _          "
     echo "__   _(_) _ __ ___  "
-    echo "\\ \\ / / || '_ \\` _ \\ "
+    echo "\\ \\ / / || '_ \\\` _ \\ "
     echo " \\ V /| || | | | | |"
     echo "  \\_/ | ||_| |_| |_|"
-    echo "     _/ |         vjm installer"
+    echo "     _/ |         vjm installer ⚡"
     echo "    |__/          github.com/xvlet/vjm"
     echo ""
 
@@ -27,8 +27,9 @@ main() {
 
     ARCH="$(uname -m)"
     case "$ARCH" in
-        x86_64|amd64)   arch="x86_64" ;;
+        x86_64|amd64)   arch="amd64" ;;
         aarch64|arm64)  arch="arm64" ;;
+        ppc64*)         arch="ppc64" ;;
         *)              err "unsupported architecture: $ARCH" ;;
     esac
 
