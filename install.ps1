@@ -12,12 +12,12 @@ Write-Host "__   _(_) _ __ ___  "
 Write-Host "\ \ / / || '_ \` _ \ "
 Write-Host " \ V /| || | | | | |"
 Write-Host "  \_/ | ||_| |_| |_|"
-Write-Host "     _/ |         vjm installer"
+Write-Host "     _/ |         vjm installer ⚡"
 Write-Host "    |__/          github.com/$REPO"
 Write-Host ""
 
 # Detect Architecture
-$Arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'AMD64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'AMD64') { "x86_64" } else { "arm64" }
+$Arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'AMD64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'AMD64') { "amd64" } else { "arm64" }
 $Target = "windows_$Arch"
 
 Write-Host "  > detected windows/$Arch" -ForegroundColor Green

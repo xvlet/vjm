@@ -88,12 +88,12 @@ flowchart LR
 
 **macOS / Linux / AIX (Shell)**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xvlet/vjm/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/xvlet/vjm/master/install.sh | sh
 ```
 
 **Windows (PowerShell)**
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xvlet/vjm/main/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xvlet/vjm/master/install.ps1 | iex"
 ```
 
 ### 2. Go 환경이 설치된 경우 (go install)
