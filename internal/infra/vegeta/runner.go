@@ -135,7 +135,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	}
 
 	// Merge all parts into final result
-	out, err := os.OpenFile(config.ResultBinPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	out, err := os.OpenFile(config.ResultBinPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
