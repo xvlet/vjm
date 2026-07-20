@@ -14,9 +14,10 @@ RUN go mod download
 
 # Copy source code and build
 COPY . .
+ARG VERSION=dev
 # CGO_ENABLED=0: Build as statically linked binary to remove external C library dependencies
 # -s -w: Remove debugging symbols to further reduce binary size
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o vjm ./cmd/vjm
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o vjm ./cmd/vjm
 
 # ==========================================
 # Stage 2: Final (Minimal Image)
