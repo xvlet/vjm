@@ -70,13 +70,13 @@ func SaveResponsesIfNeeded(binPath string, savers []*domain.ResultSaver) error {
 			// Ensure directory exists if prefix contains path
 			dir := filepath.Dir(filename)
 			if dir != "." && dir != "" {
-				if err := os.MkdirAll(dir, 0755); err != nil {
+				if err := os.MkdirAll(dir, 0750); err != nil {
 					log.Printf("[WARNING] ResultSaver failed to create dir %s: %v", dir, err)
 					continue
 				}
 			}
 
-			if err := os.WriteFile(filename, res.Body, 0644); err != nil {
+			if err := os.WriteFile(filename, res.Body, 0600); err != nil {
 				log.Printf("[WARNING] ResultSaver failed to write file %s: %v", filename, err)
 			}
 		}

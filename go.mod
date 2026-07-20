@@ -1,6 +1,6 @@
 module github.com/xvlet/vjm
 
-go 1.25.5
+go 1.25.12
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
@@ -9,6 +9,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/oliveagle/jsonpath v0.1.4
 	github.com/tsenart/vegeta/v12 v12.13.0
+	golang.org/x/net v0.55.0
 )
 
 require (
@@ -19,7 +20,6 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/rs/dnscache v0.0.0-20230804202142-fc85eb664529 // indirect
-	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 )

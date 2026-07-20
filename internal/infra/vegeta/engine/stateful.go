@@ -97,7 +97,7 @@ type CSVRuntime struct {
 	Config   *domain.CSVDataSet
 	Lines    [][]string
 	Next     *int64
-	VarNames []string // pre-parsed variable names (hot path 최적화)
+	VarNames []string // pre-parsed variable names (hot path optimization)
 }
 
 func parseCSV(cfg *domain.CSVDataSet) *CSVRuntime {
@@ -416,7 +416,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 		attackStart := time.Now()
 
-		tokens := make(chan struct{}, int(a.maxW)*2) // 버퍼 추가: 생산자 goroutine 블로킹 방지
+		tokens := make(chan struct{}, int(a.maxW)*2) // Add buffer: prevent producer goroutine from blocking
 		go func() {
 			var hits uint64
 			for {
@@ -567,7 +567,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					Jar:       createCookieJar(),
 				}
 
-				// [PERF] allRVs를 루프 밖에서 1회만 계산 (매 이터레이션 heap 할당 제거)
+				// [PERF] Calculate allRVs once outside the loop (removes heap allocation per iteration)
 				allRVs := make([]*RandomVariableRuntime, 0, len(sharedRandomVariables)+len(localRandomVariables))
 				allRVs = append(allRVs, sharedRandomVariables...)
 				allRVs = append(allRVs, localRandomVariables...)
@@ -622,7 +622,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							continue
 						}
 						row := csv.Lines[int(idx)%len(csv.Lines)]
-						// [PERF] VarNames는 parseCSV 시 1회만 파싱됨 (매 이터레이션 strings.Split 제거)
+						// [PERF] VarNames are parsed only once during parseCSV (removes strings.Split per iteration)
 						for i, vName := range csv.VarNames {
 							if vName != "" && i < len(row) {
 								session.Variables[vName] = row[i]
@@ -1104,7 +1104,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							buf := *bufPtr
 
 							if needsBody {
-								// bytes.Buffer 직접 사용: strings.Builder 경유 시 2번 복사 → 0번으로 최적화
+								// Direct use of bytes.Buffer: optimized from 2 copies via strings.Builder to 0 copies
 								var bb bytes.Buffer
 								bb.Grow(4096)
 								written, _ := io.CopyBuffer(&bb, resp.Body, buf)
@@ -1115,8 +1115,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								res.BytesIn = uint64(written)
 							}
 
-							_ = resp.Body.Close()  // Close 먼저 (읽기 완료 보장)
-							bufferPool.Put(bufPtr) // 그 다음 Pool 반환
+							_ = resp.Body.Close()  // Close first (ensures read is complete)
+							bufferPool.Put(bufPtr) // Then return to Pool
 
 							session.LastResponseBody = bodyBytes
 

@@ -163,7 +163,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 		resultsChan = standardAttacker.Attack(targeter, pacer, dur, "vjm-attack")
 	}
 
-	outFile, err := os.OpenFile(config.ResultBinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	outFile, err := os.OpenFile(config.ResultBinPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open result file: %w", err)
 	}
@@ -180,8 +180,8 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 		intervalErrors  atomic.Int64
 		totalReqs       atomic.Int64
 	)
-	// [PERF] Lock-free histogram: 2000 buckets × 0.5ms = 0~999.5ms 범위 커버
-	// 매 요청 mutex lock + 5초마다 sort(23000개) 제거
+	// [PERF] Lock-free histogram: 2000 buckets × 0.5ms = 0~999.5ms range covered
+	// Removes per-request mutex lock + periodic sorting (23000 items) every 5 seconds
 	const latBucketCount = 2000
 	var latBuckets [latBucketCount]atomic.Int64
 
@@ -211,7 +211,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			if bucketIdx < 0 {
 				bucketIdx = 0
 			}
-			latBuckets[bucketIdx].Add(1)
+			latBuckets[bucketIdx].Add(1) // #nosec G602
 
 			if res.Error != "" || res.Code >= 400 || res.Code == 0 {
 				intervalErrors.Add(1)
@@ -226,7 +226,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			iErrs := intervalErrors.Swap(0)
 			tReqs := totalReqs.Load()
 
-			// [PERF] Histogram 기반 P99/Max 계산 (lock-free, 정렬 불필요)
+			// [PERF] Histogram-based P99/Max calculation (lock-free, no sorting required)
 			var bucketSnapshot [latBucketCount]int64
 			var bucketTotal int64
 			maxBucketIdx := -1

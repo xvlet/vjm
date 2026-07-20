@@ -124,11 +124,11 @@ func main() {
 
 	finalResultBin := *resultFile
 	if finalResultBin == "" {
-		_ = os.MkdirAll("results", 0755)
+		_ = os.MkdirAll("results", 0750)
 		finalResultBin = filepath.Join("results", "result_"+timestamp+".bin")
 	} else {
 		// Ensure parent directories exist for custom result file path
-		_ = os.MkdirAll(filepath.Dir(finalResultBin), 0755)
+		_ = os.MkdirAll(filepath.Dir(finalResultBin), 0750)
 	}
 
 	var finalReportDir string
