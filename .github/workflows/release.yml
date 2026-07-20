@@ -22,7 +22,7 @@ jobs:
           cache: true
 
       - name: Build binaries via Makefile
-        run: make all
+        run: make all VERSION=${GITHUB_REF_NAME}
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
