@@ -91,9 +91,10 @@ $SysPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
 
 if (($UserPath -notmatch [regex]::Escape($InstallDir)) -and ($SysPath -notmatch [regex]::Escape($InstallDir))) {
     Write-Host ""
-    Write-Host "  ! $InstallDir is not in your PATH" -ForegroundColor Yellow
-    Write-Host "    You can add it by running:"
-    Write-Host "    [Environment]::SetEnvironmentVariable('PATH', [Environment]::GetEnvironmentVariable('PATH', 'User') + ';$InstallDir', 'User')"
+    Write-Host "  > adding $InstallDir to your PATH..." -ForegroundColor Green
+    $NewPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $InstallDir } else { "$UserPath;$InstallDir" }
+    [Environment]::SetEnvironmentVariable('PATH', $NewPath, 'User')
+    Write-Host "  ! Please restart your terminal to apply the new PATH." -ForegroundColor Yellow
 }
 
 Write-Host ""
