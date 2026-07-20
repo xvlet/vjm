@@ -114,26 +114,21 @@ chmod +x vjm
 ./vjm -h
 ```
 ### 4. Using Docker
-You can run `vjm` using Docker without installing anything on your host. We provide a minimal Dockerfile (multi-stage, alpine-based) for this purpose.
+You can run `vjm` using Docker without installing anything on your host. Our official images are published to the GitHub Container Registry (GHCR).
 
-First, build the Docker image directly from the GitHub repository (no cloning required):
+You can verify it works by running the help command:
 ```bash
-docker build -t xvlet/vjm https://github.com/xvlet/vjm.git
-```
-
-Then, you can verify it works by running the help command:
-```bash
-docker run --rm xvlet/vjm -h
+docker run --rm ghcr.io/xvlet/vjm -h
 ```
 
 To run a load test, you need to mount your local directory (where your `.jmx` file is located) into the container. 
 **Note:** Since load test reports and logs require accurate timestamps, it is highly recommended to mount your host's timezone by passing the `-e TZ` environment variable:
 ```bash
 # On Linux/macOS
-docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
+docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
 
 # On Windows (PowerShell)
-docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
+docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
 ```
 
 ---
