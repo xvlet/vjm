@@ -1,0 +1,101 @@
+$ErrorActionPreference = "Stop"
+
+$BIN = "vjm"
+$REPO = "xvlet/vjm"
+
+# Define install directory
+$InstallDir = if ($env:VJM_INSTALL_DIR) { $env:VJM_INSTALL_DIR } else { "$env:USERPROFILE\.local\bin" }
+
+Write-Host ""
+Write-Host "       _          "
+Write-Host "__   _(_) _ __ ___  "
+Write-Host "\ \ / / || '_ \` _ \ "
+Write-Host " \ V /| || | | | | |"
+Write-Host "  \_/ | ||_| |_| |_|"
+Write-Host "     _/ |         vjm installer"
+Write-Host "    |__/          github.com/$REPO"
+Write-Host ""
+
+# Detect Architecture
+$Arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'AMD64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'AMD64') { "x86_64" } else { "arm64" }
+$Target = "windows_$Arch"
+
+Write-Host "  > detected windows/$Arch" -ForegroundColor Green
+
+# Fetch latest release from GitHub API
+Write-Host "  > fetching latest release manifest..." -ForegroundColor Green
+$ManifestUrl = "https://api.github.com/repos/$REPO/releases/latest"
+try {
+    $Manifest = Invoke-RestMethod -Uri $ManifestUrl -UseBasicParsing
+} catch {
+    Write-Host "  X can't reach GitHub API. Please try again later." -ForegroundColor Red
+    exit 1
+}
+
+$Version = $Manifest.tag_name
+
+# Find the matching asset (looks for .zip or .tar.gz)
+$Asset = $Manifest.assets | Where-Object { $_.name -match $Target -and ($_.name -match '\.zip$' -or $_.name -match '\.tar\.gz$') } | Select-Object -First 1
+
+if (-not $Asset) {
+    Write-Host "  X release manifest does not include a binary for $Target" -ForegroundColor Red
+    exit 1
+}
+
+$DownloadUrl = $Asset.browser_download_url
+$FileName = $Asset.name
+
+Write-Host "  > downloading $Version..." -ForegroundColor Green
+$TempDir = Join-Path $env:TEMP "vjm_install_$([guid]::NewGuid().ToString().Substring(0,8))"
+New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+$DownloadPath = Join-Path $TempDir $FileName
+
+Invoke-WebRequest -Uri $DownloadUrl -OutFile $DownloadPath -UseBasicParsing
+
+Write-Host "  > extracting..." -ForegroundColor Green
+$OriginalLocation = Get-Location
+if ($FileName.EndsWith(".zip")) {
+    Expand-Archive -Path $DownloadPath -DestinationPath $TempDir -Force
+} else {
+    Set-Location $TempDir
+    tar -xzf $FileName
+}
+
+$BinPath = Get-ChildItem -Path $TempDir -Recurse -Filter "$BIN.exe" | Select-Object -First 1
+
+if (-not $BinPath) {
+    # Sometimes windows binaries don't have .exe in some weird releases, check without extension just in case
+    $BinPath = Get-ChildItem -Path $TempDir -Recurse -Filter "$BIN" | Select-Object -First 1
+    if (-not $BinPath) {
+        Write-Host "  X could not find $BIN.exe in the extracted archive" -ForegroundColor Red
+        Set-Location $OriginalLocation
+        Remove-Item -Recurse -Force $TempDir
+        exit 1
+    }
+}
+
+# Install
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+$DestPath = Join-Path $InstallDir "$BIN.exe"
+Move-Item -Path $BinPath.FullName -Destination $DestPath -Force
+
+Write-Host "  > installed $BIN to $DestPath" -ForegroundColor Green
+
+# Cleanup
+Set-Location $OriginalLocation
+Remove-Item -Recurse -Force $TempDir
+
+# Check PATH
+$UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+$SysPath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+
+if (($UserPath -notmatch [regex]::Escape($InstallDir)) -and ($SysPath -notmatch [regex]::Escape($InstallDir))) {
+    Write-Host ""
+    Write-Host "  ! $InstallDir is not in your PATH" -ForegroundColor Yellow
+    Write-Host "    You can add it by running:"
+    Write-Host "    [Environment]::SetEnvironmentVariable('PATH', [Environment]::GetEnvironmentVariable('PATH', 'User') + ';$InstallDir', 'User')"
+}
+
+Write-Host ""
+Write-Host "  > ready. run '$BIN' to get started." -ForegroundColor Green
+Write-Host ""

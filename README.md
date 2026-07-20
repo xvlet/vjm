@@ -84,13 +84,26 @@ Because `vjm` translates JMeter's **Thread-based, sequential state** model into 
 
 You can install `vjm` using one of the following methods. The `vjm` binary is distributed as a statically linked executable (`CGO_ENABLED=0`), ensuring it runs independently without any external dependency issues.
 
-### 1. Using Go (go install)
+### 1. Quick Install Scripts
+The easiest way to install the latest release is by using the provided installation scripts for your operating system.
+
+**macOS / Linux / AIX (Shell)**
+```bash
+curl -fsSL https://raw.githubusercontent.com/xvlet/vjm/main/install.sh | sh
+```
+
+**Windows (PowerShell)**
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xvlet/vjm/main/install.ps1 | iex"
+```
+
+### 2. Using Go (go install)
 If you have Go (1.25+) installed, you can easily install `vjm` via `go install`:
 ```bash
 go install github.com/xvlet/vjm/cmd/vjm@latest
 ```
 
-### 2. Download Pre-built Binary
+### 3. Download Pre-built Binary
 If you don't have Go installed and just want to use the executable, download the latest pre-built release.
 - [Download binary from Releases](https://github.com/xvlet/vjm/releases)
 
@@ -99,6 +112,28 @@ After downloading, extract the archive and run it:
 tar -xzf vjm_linux_amd64.tar.gz
 chmod +x vjm
 ./vjm -h
+```
+### 4. Using Docker
+You can run `vjm` using Docker without installing anything on your host. We provide a minimal Dockerfile (multi-stage, alpine-based) for this purpose.
+
+First, build the Docker image directly from the GitHub repository (no cloning required):
+```bash
+docker build -t xvlet/vjm https://github.com/xvlet/vjm.git
+```
+
+Then, you can verify it works by running the help command:
+```bash
+docker run --rm xvlet/vjm -h
+```
+
+To run a load test, you need to mount your local directory (where your `.jmx` file is located) into the container. 
+**Note:** Since load test reports and logs require accurate timestamps, it is highly recommended to mount your host's timezone by passing the `-e TZ` environment variable:
+```bash
+# On Linux/macOS
+docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
+
+# On Windows (PowerShell)
+docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
 ```
 
 ---
@@ -302,7 +337,7 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 | `${__isVarDefined(var)}` | Tests if variable exists | `${__isVarDefined(MYVAR)}` |
 | `${__setProperty(key,val,ret)}` | Sets property value | `${__setProperty(target,localhost,false)}` |
 | `${__counter(TRUE/FALSE,var)}` | Global or per-thread counter | `${__counter(FALSE,MYVAR)}` |
-| `${__CSVRead(file,col|next)}` | Reads CSV column | `${__CSVRead(test.csv,0)}` |
+| `${__CSVRead(file,col\|next)}` | Reads CSV column | `${__CSVRead(test.csv,0)}` |
 | `${__evalVar(var)}` | Evaluates expression in variable | `${__evalVar(MYVAR)}` |
 | `${__changeCase(str,mode,var)}` | Changes case (UPPER/LOWER/CAPITALIZE) | `${__changeCase(hello,UPPER)}` |
 | `${__char(num...)}` | Generates Unicode char from number | `${__char(0x41)}` |
@@ -370,20 +405,7 @@ no -p -o tcp_ephemeral_low=10241  # Expand ephemeral port range
 
 ## Test Result Example
 
-```text
-===================================================
-Vegeta Attack Report:
-===================================================
-Requests      [total, rate, throughput]         75326, 7532.26, 7506.49
-Duration      [total, attack, wait]             10.035s, 10s, 34.332ms
-Latencies     [min, mean, 50, 90, 95, 99, max]  1.839ms, 51.648ms, 49.853ms, 77.117ms, 86.962ms, 110.445ms, 208.217ms
-Bytes In      [total, mean]                     63424492, 842.00
-Bytes Out     [total, mean]                     63424492, 842.00
-Success       [ratio]                           100.00%
-Status Codes  [code:count]                      200:75326
-Error Set:
-===================================================
-```
+![Test Result Demo](demo.gif)
 
 ---
 
