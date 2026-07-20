@@ -3,12 +3,12 @@ package vegeta
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
 	"sync"
 
-	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
 	"github.com/xvlet/vjm/internal/infra/vegeta/threadgroup"
@@ -141,7 +141,6 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	}
 	defer func() { _ = out.Close() }()
 
-	enc := vegeta.NewEncoder(out)
 	for _, paths := range tgPaths {
 		for _, partPath := range strings.Split(paths, ",") {
 			partPath = strings.TrimSpace(partPath)
@@ -150,14 +149,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 			}
 			in, err := os.Open(partPath)
 			if err == nil {
-				dec := vegeta.NewDecoder(in)
-				var res vegeta.Result
-				for {
-					if err := dec.Decode(&res); err != nil {
-						break
-					}
-					_ = enc.Encode(&res)
-				}
+				_, _ = io.Copy(out, in)
 				_ = in.Close()
 				_ = os.Remove(partPath)
 			}

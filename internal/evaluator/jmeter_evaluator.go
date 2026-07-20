@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 )
 
 // SharedContext holds thread-safe global states
@@ -16,6 +17,7 @@ type SharedContext struct {
 	properties  sync.Map
 	globalCount int64
 	csvCache    sync.Map // maps fileName to *CSVSharedState
+	exprCache   sync.Map // maps resolved condition to *vm.Program
 }
 
 type CSVSharedState struct {
@@ -48,9 +50,21 @@ func (e *DefaultEvaluator) EvaluateLogic(condition string) bool {
 	}
 
 	// 3. Fallback: it might be a raw expression like `"200" == "200"`
-	res, err := expr.Eval(resolved, nil)
+	var program *vm.Program
+	if cached, ok := e.shared.exprCache.Load(resolved); ok {
+		program = cached.(*vm.Program)
+	} else {
+		var err error
+		program, err = expr.Compile(resolved)
+		if err != nil {
+			return false // On error, treat as false
+		}
+		e.shared.exprCache.Store(resolved, program)
+	}
+
+	res, err := expr.Run(program, nil)
 	if err != nil {
-		return false // On error, treat as false
+		return false
 	}
 
 	if b, ok := res.(bool); ok {
@@ -130,6 +144,7 @@ func (e *DefaultEvaluator) Evaluate(template string) string {
 	}
 
 	// Limit recursion to 10 depths to prevent infinite loops
+	var sb strings.Builder
 	for pass := 0; pass < 10; pass++ {
 		previous := template
 
@@ -137,7 +152,7 @@ func (e *DefaultEvaluator) Evaluate(template string) string {
 			break
 		}
 
-		var sb strings.Builder
+		sb.Reset()
 		// Pre-allocate to reduce slice growth overhead
 		sb.Grow(len(template) + 64)
 
