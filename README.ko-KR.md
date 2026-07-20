@@ -83,13 +83,26 @@ flowchart LR
 
 사용자의 환경에 맞춰 아래 두 가지 방법 중 하나로 설치할 수 있습니다. `vjm` 바이너리는 의존성 문제 없이 독립적으로 실행될 수 있도록 정적 링킹(Statically Linked, `CGO_ENABLED=0`) 방식으로 배포됩니다.
 
-### 1. Go 환경이 설치된 경우 (go install)
+### 1. 간편 설치 스크립트
+가장 쉽고 빠르게 최신 버전을 설치하는 방법입니다. 아래 명령어를 실행하면 OS와 아키텍처에 맞는 최신 릴리즈를 자동으로 다운로드하고 설치합니다.
+
+**macOS / Linux / AIX (Shell)**
+```bash
+curl -fsSL https://raw.githubusercontent.com/xvlet/vjm/main/install.sh | sh
+```
+
+**Windows (PowerShell)**
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xvlet/vjm/main/install.ps1 | iex"
+```
+
+### 2. Go 환경이 설치된 경우 (go install)
 Go(1.25 이상)가 설치된 환경에서는 아래 명령어로 쉽게 설치할 수 있습니다.
 ```bash
 go install github.com/xvlet/vjm/cmd/vjm@latest
 ```
 
-### 2. 사전 빌드된 바이너리 다운로드 (Pre-built Binary)
+### 3. 사전 빌드된 바이너리 다운로드 (Pre-built Binary)
 아무것도 설치되지 않은 환경에서 바로 바이너리만 사용하고 싶다면, 최신 릴리즈를 다운로드하세요.
 - [Release 페이지에서 바이너리 다운로드](https://github.com/xvlet/vjm/releases)
 
@@ -98,6 +111,28 @@ go install github.com/xvlet/vjm/cmd/vjm@latest
 tar -xzf vjm_linux_amd64.tar.gz
 chmod +x vjm
 ./vjm -h
+```
+### 4. Docker 사용
+호스트 환경에 아무것도 설치하지 않고 도커를 통해 `vjm`을 실행할 수 있습니다. 이를 위해 초경량 다중 스테이지(multi-stage) 빌드가 적용된 `Dockerfile`을 제공합니다.
+
+먼저, 소스 코드를 다운로드할 필요 없이 GitHub 저장소에서 직접 Docker 이미지를 빌드합니다:
+```bash
+docker build -t xvlet/vjm https://github.com/xvlet/vjm.git
+```
+
+먼저, 정상적으로 작동하는지 도움말 명령어로 확인해 볼 수 있습니다:
+```bash
+docker run --rm xvlet/vjm -h
+```
+
+실제 부하 테스트를 실행하려면 `.jmx` 파일이 있는 현재 로컬 디렉토리를 컨테이너에 마운트해야 합니다.
+**주의:** 부하 테스트 리포트와 로그는 정확한 타임스탬프가 필수적이므로, `-e TZ` 환경 변수를 사용해 컨테이너의 시간대를 호스트(예: 한국 시간)와 맞추는 것을 강력히 권장합니다.
+```bash
+# Linux/macOS 환경
+docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
+
+# Windows (PowerShell) 환경
+docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul xvlet/vjm run -t test.jmx
 ```
 
 ---
@@ -301,7 +336,7 @@ testdata=test
 | `${__isVarDefined(var)}` | 변수 존재 여부 확인 | `${__isVarDefined(MYVAR)}` |
 | `${__setProperty(key,val,ret)}` | Property 설정 | `${__setProperty(target,localhost,false)}` |
 | `${__counter(TRUE/FALSE,var)}` | 전역/쓰레드별 카운터 | `${__counter(FALSE,MYVAR)}` |
-| `${__CSVRead(file,col|next)}` | CSV 파일 컬럼 읽기 | `${__CSVRead(test.csv,0)}` |
+| `${__CSVRead(file,col\|next)}` | CSV 파일 컬럼 읽기 | `${__CSVRead(test.csv,0)}` |
 | `${__evalVar(var)}` | 변수에 저장된 표현식 평가 | `${__evalVar(MYVAR)}` |
 | `${__changeCase(str,mode,var)}` | 대소문자 변환 (UPPER/LOWER/CAPITALIZE) | `${__changeCase(hello,UPPER)}` |
 | `${__char(num...)}` | 숫자로부터 유니코드 문자 생성 | `${__char(0x41)}` |
@@ -369,20 +404,7 @@ no -p -o tcp_ephemeral_low=10241  # 임시 포트 범위 확장
 
 ## 테스트 결과 예시
 
-```
-===================================================
-Vegeta Attack Report:
-===================================================
-Requests      [total, rate, throughput]         75326, 7532.26, 7506.49
-Duration      [total, attack, wait]             10.035s, 10s, 34.332ms
-Latencies     [min, mean, 50, 90, 95, 99, max]  1.839ms, 51.648ms, 49.853ms, 77.117ms, 86.962ms, 110.445ms, 208.217ms
-Bytes In      [total, mean]                     63424492, 842.00
-Bytes Out     [total, mean]                     63424492, 842.00
-Success       [ratio]                           100.00%
-Status Codes  [code:count]                      200:75326
-Error Set:
-===================================================
-```
+![Test Result Demo](demo.gif)
 
 ---
 
