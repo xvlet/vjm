@@ -15,22 +15,24 @@ builds:
       - linux
       - darwin
       - windows
-      - aix
     goarch:
       - amd64
       - arm64
-      - ppc64
-    ignore:
-      - goos: darwin
-        goarch: ppc64
-      - goos: windows
-        goarch: ppc64
-      - goos: aix
-        goarch: amd64
-      - goos: aix
-        goarch: arm64
     ldflags:
       - -s -w -X main.Version={{.Version}}
+      
+  - id: vjm-aix
+    main: ./cmd/vjm/main.go
+    binary: vjm
+    env:
+      - CGO_ENABLED=0
+      - GOPPC64=power8
+    goos:
+      - aix
+    goarch:
+      - ppc64
+    ldflags:
+      - -w -X main.Version={{.Version}}
 
 archives:
   - format: tar.gz
