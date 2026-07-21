@@ -83,7 +83,14 @@ flowchart LR
 
 사용자의 환경에 맞춰 아래 두 가지 방법 중 하나로 설치할 수 있습니다. `vjm` 바이너리는 의존성 문제 없이 독립적으로 실행될 수 있도록 정적 링킹(Statically Linked, `CGO_ENABLED=0`) 방식으로 배포됩니다.
 
-### 1. 간편 설치 스크립트
+### 1. Homebrew (macOS / Linux)
+가장 권장하는 방식으로, Homebrew를 통해 손쉽게 설치할 수 있습니다:
+```bash
+brew tap xvlet/vjm
+brew install vjm
+```
+
+### 2. 간편 설치 스크립트
 가장 쉽고 빠르게 최신 버전을 설치하는 방법입니다. 아래 명령어를 실행하면 OS와 아키텍처에 맞는 최신 릴리즈를 자동으로 다운로드하고 설치합니다.
 
 **macOS / Linux / AIX (Shell)**
@@ -96,13 +103,13 @@ curl -fsSL https://raw.githubusercontent.com/xvlet/vjm/master/install.sh | sh
 powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xvlet/vjm/master/install.ps1 | iex"
 ```
 
-### 2. Go 환경이 설치된 경우 (go install)
+### 3. Go 환경이 설치된 경우 (go install)
 Go(1.25 이상)가 설치된 환경에서는 아래 명령어로 쉽게 설치할 수 있습니다.
 ```bash
 go install github.com/xvlet/vjm/cmd/vjm@latest
 ```
 
-### 3. 사전 빌드된 바이너리 다운로드 (Pre-built Binary)
+### 4. 사전 빌드된 바이너리 다운로드 (Pre-built Binary)
 아무것도 설치되지 않은 환경에서 바로 바이너리만 사용하고 싶다면, 최신 릴리즈를 다운로드하세요.
 - [Release 페이지에서 바이너리 다운로드](https://github.com/xvlet/vjm/releases)
 
@@ -112,7 +119,7 @@ tar -xzf vjm_linux_amd64.tar.gz
 chmod +x vjm
 ./vjm -h
 ```
-### 4. Docker 사용
+### 5. Docker 사용
 호스트 환경에 아무것도 설치하지 않고 도커를 통해 `vjm`을 실행할 수 있습니다. 공식 이미지는 GitHub Container Registry(GHCR)를 통해 자동 배포됩니다.
 
 정상적으로 작동하는지 도움말 명령어로 확인해 볼 수 있습니다:

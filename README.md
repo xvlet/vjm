@@ -84,7 +84,14 @@ Because `vjm` translates JMeter's **Thread-based, sequential state** model into 
 
 You can install `vjm` using one of the following methods. The `vjm` binary is distributed as a statically linked executable (`CGO_ENABLED=0`), ensuring it runs independently without any external dependency issues.
 
-### 1. Quick Install Scripts
+### 1. Homebrew (macOS / Linux)
+You can easily install `vjm` using Homebrew via our custom tap:
+```bash
+brew tap xvlet/vjm
+brew install vjm
+```
+
+### 2. Quick Install Scripts
 The easiest way to install the latest release is by using the provided installation scripts for your operating system.
 
 **macOS / Linux / AIX (Shell)**
@@ -97,13 +104,13 @@ curl -fsSL https://raw.githubusercontent.com/xvlet/vjm/master/install.sh | sh
 powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xvlet/vjm/master/install.ps1 | iex"
 ```
 
-### 2. Using Go (go install)
+### 3. Using Go (go install)
 If you have Go (1.25+) installed, you can easily install `vjm` via `go install`:
 ```bash
 go install github.com/xvlet/vjm/cmd/vjm@latest
 ```
 
-### 3. Download Pre-built Binary
+### 4. Download Pre-built Binary
 If you don't have Go installed and just want to use the executable, download the latest pre-built release.
 - [Download binary from Releases](https://github.com/xvlet/vjm/releases)
 
@@ -113,7 +120,7 @@ tar -xzf vjm_linux_amd64.tar.gz
 chmod +x vjm
 ./vjm -h
 ```
-### 4. Using Docker
+### 5. Using Docker
 You can run `vjm` using Docker without installing anything on your host. Our official images are published to the GitHub Container Registry (GHCR).
 
 You can verify it works by running the help command:
