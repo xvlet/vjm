@@ -1,0 +1,78 @@
+version: 2
+project_name: vjm
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: vjm
+    main: ./cmd/vjm/main.go
+    binary: vjm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - aix
+    goarch:
+      - amd64
+      - arm64
+      - ppc64
+    ignore:
+      - goos: darwin
+        goarch: ppc64
+      - goos: windows
+        goarch: ppc64
+      - goos: aix
+        goarch: amd64
+      - goos: aix
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+archives:
+  - format: tar.gz
+    # Use standard names
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+brews:
+  - name: vjm
+    repository:
+      owner: xvlet
+      name: homebrew-vjm
+      # Personal access token with 'repo' scope is required to push to the tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    
+    directory: Formula
+    
+    homepage: "https://github.com/xvlet/vjm"
+    description: "Vegeta-JMeter Engine - High performance load testing tool compatible with JMeter"
+    
+    install: |
+      bin.install "vjm"
+    
+    test: |
+      system "#{bin}/vjm", "--version"
