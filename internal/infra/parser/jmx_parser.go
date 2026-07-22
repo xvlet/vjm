@@ -73,6 +73,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 		IsRandom      bool
 		IsRandomOrder bool
 		IsRuntime     bool
+		IsThroughput  bool
 	}
 	var loopStack []LoopContext
 	var pendingLoopId int
@@ -151,6 +152,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var inFreeFormData bool
 	var inFreeFormRow bool
 	var freeFormRowVals []string
+	var pendingThroughputId int
+	var pendingThroughputStyle int
+	var pendingThroughputMax string
+	var pendingThroughputPerThread bool
 
 	var currentCSVDataSet *domain.CSVDataSet
 	var currentCookieManager *domain.CookieManager
@@ -314,6 +319,28 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					})
 					pendingModuleId = 0
 					pendingModuleTargetNodePath = nil
+				}
+
+				if pendingThroughputId > 0 && currentThreadGroup != nil {
+					startIndex := len(currentThreadGroup.Samplers)
+					loopStack = append(loopStack, LoopContext{
+						Depth:        hashTreeDepth,
+						LoopId:       pendingThroughputId,
+						StartIndex:   startIndex,
+						IsThroughput: true,
+					})
+					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						IsControlFlow:       true,
+						ControlType:         "ThroughputStart",
+						LoopId:              pendingThroughputId,
+						ThroughputStyle:     pendingThroughputStyle,
+						ThroughputMaxExpr:   pendingThroughputMax,
+						ThroughputPerThread: pendingThroughputPerThread,
+					})
+					pendingThroughputId = 0
+					pendingThroughputStyle = 0
+					pendingThroughputMax = ""
+					pendingThroughputPerThread = false
 				}
 
 				if pendingSwitchId > 0 && currentThreadGroup != nil {
@@ -569,6 +596,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				pendingModuleId = nextLoopId
 				nextLoopId++
 				pendingModuleTargetNodePath = []string{}
+			} else if currentTag == "ThroughputController" {
+				pendingThroughputId = nextLoopId
+				nextLoopId++
 			} else if currentTag == "SwitchController" {
 				pendingSwitchId = nextLoopId
 				nextLoopId++
@@ -879,6 +909,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							endType = "RandomOrderEnd"
 						} else if top.IsRuntime {
 							endType = "RuntimeEnd"
+						} else if top.IsThroughput {
+							endType = "ThroughputEnd"
 						}
 
 						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
@@ -1296,10 +1328,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			case "value":
 				if floatPropValueState {
 					switch floatPropName {
-					case "ThroughputController.percentThroughput":
-						if v, err := strconv.ParseFloat(val, 64); err == nil {
-							pendingWeight = v
+					case "ThroughputController.style":
+						if v, err := strconv.Atoi(val); err == nil {
+							pendingThroughputStyle = v
 						}
+					case "ThroughputController.percentThroughput":
+						// percentThroughput is stored as FloatProperty; also handle style here if present
+						pendingThroughputMax = val
 					case "throughput":
 						if currentThroughputTimer != nil {
 							currentThroughputTimer.Throughput = val
@@ -1307,6 +1342,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "boolProp":
+				if nameAttr == "ThroughputController.perThread" {
+					pendingThroughputPerThread = (val == "true")
+				}
 				if nameAttr == "LoopController.continue_forever" {
 					pendingLoopContinue = (val == "true")
 					if currentThreadGroup != nil && pendingLoopId == 0 {
@@ -1454,6 +1492,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "intProp":
+				if nameAttr == "ThroughputController.style" {
+					if v, err := strconv.Atoi(val); err == nil {
+						pendingThroughputStyle = v
+					}
+				}
 				if currentCacheManager != nil && nameAttr == "maxSize" {
 					if v, err := strconv.Atoi(val); err == nil {
 						currentCacheManager.MaxSize = v
@@ -1708,9 +1751,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						currentThreadGroup.FreeFormArrivalsConfig.ConcurrencyLimit = val
 					}
 				case "ThroughputController.maxThroughput":
-					if v, err := strconv.ParseFloat(val, 64); err == nil {
-						pendingWeight = v
-					}
+					pendingThroughputMax = val
 				case "SwitchController.value":
 					pendingSwitchValue = val
 				case "IncludeController.includepath":

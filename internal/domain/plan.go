@@ -289,4 +289,7 @@ type Sampler struct {
 	SwitchChildEnds        []int
 	SwitchChildNames       []string
 	ModuleTargetNodePath   []string // Module Controller target path
+	ThroughputStyle        int      // 1 for percent, 0 for total
+	ThroughputMaxExpr      string   // Target throughput
+	ThroughputPerThread    bool     // true if per user
 }
