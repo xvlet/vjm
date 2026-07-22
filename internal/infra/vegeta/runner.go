@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	vegeta "github.com/tsenart/vegeta/v12/lib"
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
 	"github.com/xvlet/vjm/internal/infra/vegeta/threadgroup"
@@ -141,6 +142,8 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	}
 	defer func() { _ = out.Close() }()
 
+	enc := vegeta.NewEncoder(out)
+
 	for _, paths := range tgPaths {
 		for _, partPath := range strings.Split(paths, ",") {
 			partPath = strings.TrimSpace(partPath)
@@ -149,7 +152,19 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 			}
 			in, err := os.Open(partPath)
 			if err == nil {
-				_, _ = io.Copy(out, in)
+				dec := vegeta.NewDecoder(in)
+				for {
+					var res vegeta.Result
+					if err := dec.Decode(&res); err != nil {
+						if err == io.EOF {
+							break
+						}
+						return fmt.Errorf("failed to decode part result: %w", err)
+					}
+					if err := enc.Encode(&res); err != nil {
+						return fmt.Errorf("failed to encode merged result: %w", err)
+					}
+				}
 				_ = in.Close()
 				_ = os.Remove(partPath)
 			}

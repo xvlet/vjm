@@ -301,7 +301,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 		defer close(results)
 
 		var wg sync.WaitGroup
-		fmt.Println("[StatefulAttacker] Starting stateful execution (Phase 5)...")
+		fmt.Println("[StatefulAttacker] Starting stateful execution...")
 
 		var sharedCSVs []*CSVRuntime
 		for _, csv := range plan.CSVDataSets {

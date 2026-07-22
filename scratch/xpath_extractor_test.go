@@ -43,6 +43,7 @@ func TestXPathExtractorParse(t *testing.T) {
 
 	if extAll == nil || extNth == nil {
 		t.Fatalf("Failed to parse XPath Extractors")
+		return
 	}
 
 	if extAll.XPathQuery != "//title" {
