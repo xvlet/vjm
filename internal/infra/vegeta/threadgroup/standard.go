@@ -71,6 +71,14 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 
 		if len(plan.ThreadGroups) > 0 {
 			tg := plan.ThreadGroups[0]
+			if tg.NumThreads > 0 {
+				config.Workers = tg.NumThreads
+				// Default to closed-model concurrency (fire as fast as possible) unless overridden by ThroughputTimer
+				if tt == nil {
+					pacer = vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+				}
+			}
+
 			if !tg.ContinueForever && tg.Loops > 0 {
 				numThreads := tg.NumThreads
 				if numThreads <= 0 {

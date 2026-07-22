@@ -39,6 +39,7 @@ func TestResultActionParse(t *testing.T) {
 
 	if ra == nil {
 		t.Fatalf("Expected ResultAction to be parsed")
+		return
 	}
 
 	if ra.Action != 4 {

@@ -72,15 +72,18 @@ func (r *ConcurrencyRunner) Run(ctx context.Context, plan *domain.TestPlan, conf
 		}
 
 		durationStr := fmt.Sprintf("%ds", stepDurSec)
-		log.Printf("[VegetaRunner] --- Concurrency: Running step %d at %d TPS for %s ---", stepIndex, currentRate, durationStr)
+		log.Printf("[VegetaRunner] --- Concurrency: Running step %d with %d Concurrent Users for %s ---", stepIndex, currentRate, durationStr)
 
 		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
 		binPaths = append(binPaths, stepBinPath)
-		config.ResultBinPath = stepBinPath
+
+		stepConfig := *config
+		stepConfig.ResultBinPath = stepBinPath
+		stepConfig.Workers = currentRate
 
 		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: currentRate, Per: time.Second}
-		err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
+		pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+		err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
 		if err != nil {
 			return err
 		}
@@ -89,15 +92,18 @@ func (r *ConcurrencyRunner) Run(ctx context.Context, plan *domain.TestPlan, conf
 
 	if holdSec > 0 {
 		durationStr := fmt.Sprintf("%ds", holdSec)
-		log.Printf("[VegetaRunner] --- Concurrency: Holding Target Rate %d TPS for %s ---", targetLevel, durationStr)
+		log.Printf("[VegetaRunner] --- Concurrency: Holding Target %d Concurrent Users for %s ---", targetLevel, durationStr)
 
 		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
 		binPaths = append(binPaths, stepBinPath)
-		config.ResultBinPath = stepBinPath
+
+		stepConfig := *config
+		stepConfig.ResultBinPath = stepBinPath
+		stepConfig.Workers = targetLevel
 
 		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: targetLevel, Per: time.Second}
-		err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
+		pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+		err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
 		if err != nil {
 			return err
 		}

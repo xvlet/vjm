@@ -60,15 +60,18 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 
 		if stepDurSec > 0 {
 			durationStr := fmt.Sprintf("%ds", stepDurSec)
-			log.Printf("[VegetaRunner] --- Stepping: Running at %d TPS for %s ---", currentRate, durationStr)
+			log.Printf("[VegetaRunner] --- Stepping: Running step %d with %d Concurrent Users for %s ---", stepIndex, currentRate, durationStr)
 
 			stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
 			binPaths = append(binPaths, stepBinPath)
-			config.ResultBinPath = stepBinPath
+
+			stepConfig := *config
+			stepConfig.ResultBinPath = stepBinPath
+			stepConfig.Workers = currentRate
 
 			dur, _ := time.ParseDuration(durationStr)
-			pacer := vegeta.ConstantPacer{Freq: currentRate, Per: time.Second}
-			err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
+			pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+			err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
 			if err != nil {
 				return err
 			}
@@ -78,11 +81,18 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 
 	if holdDurSec > 0 {
 		durationStr := fmt.Sprintf("%ds", holdDurSec)
-		log.Printf("[VegetaRunner] --- Stepping: Holding Max Rate %d TPS for %s ---", maxRate, durationStr)
+		log.Printf("[VegetaRunner] --- Stepping: Holding Max %d Concurrent Users for %s ---", maxRate, durationStr)
+
+		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
+		binPaths = append(binPaths, stepBinPath)
+
+		stepConfig := *config
+		stepConfig.ResultBinPath = stepBinPath
+		stepConfig.Workers = maxRate
 
 		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: maxRate, Per: time.Second}
-		err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
+		pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+		err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
 		if err != nil {
 			return err
 		}
