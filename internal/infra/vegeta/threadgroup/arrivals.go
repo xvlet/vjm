@@ -93,11 +93,7 @@ func (r *ArrivalsRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 		config.ResultBinPath = stepBinPath
 
 		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: int(currentRate), Per: time.Second}
-		if currentRate < 1.0 {
-			// fallback for fractional rate if needed, or precise pacer
-			pacer = vegeta.ConstantPacer{Freq: int(currentRate * 1000), Per: 1000 * time.Second}
-		}
+		pacer := vegeta.ConstantPacer{Freq: int(currentRate * 1000), Per: 1000 * time.Second}
 
 		err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
 		if err != nil {
@@ -115,10 +111,7 @@ func (r *ArrivalsRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 		config.ResultBinPath = stepBinPath
 
 		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: int(targetRateTPS), Per: time.Second}
-		if targetRateTPS < 1.0 {
-			pacer = vegeta.ConstantPacer{Freq: int(targetRateTPS * 1000), Per: 1000 * time.Second}
-		}
+		pacer := vegeta.ConstantPacer{Freq: int(targetRateTPS * 1000), Per: 1000 * time.Second}
 
 		err := engine.RunSingle(ctx, plan, config, eval, pacer, dur)
 		if err != nil {
