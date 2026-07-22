@@ -93,6 +93,12 @@ func (b *SyncBarrier) Wait() {
 	}
 }
 
+type GlobalThroughputState struct {
+	Executions int64
+}
+
+var globalThroughputLocks sync.Map
+
 type CSVRuntime struct {
 	Config   *domain.CSVDataSet
 	Lines    [][]string
@@ -302,6 +308,12 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 		var wg sync.WaitGroup
 		fmt.Println("[StatefulAttacker] Starting stateful execution...")
+
+		// Reset per-attack state: ThroughputController total execution counters
+		globalThroughputLocks.Range(func(k, _ interface{}) bool {
+			globalThroughputLocks.Delete(k)
+			return true
+		})
 
 		var sharedCSVs []*CSVRuntime
 		for _, csv := range plan.CSVDataSets {
@@ -707,7 +719,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									} else {
 										cStr := session.Evaluator.Evaluate(sampler.LoopCountExpr)
 										c, err := strconv.Atoi(cStr)
-										if err != nil || c < 1 {
+										if err != nil || (c < 1 && c != -1) {
 											c = 1 // default or invalid
 										}
 										session.LoopCounters[sampler.LoopId] = c
@@ -837,6 +849,49 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							case "ForEachEnd":
 								session.LoopCounters[sampler.LoopId]++
 								step = sampler.LoopJumpIndex - 1 // jump back to ForEachStart
+							case "ThroughputStart":
+								maxStr := session.Evaluator.Evaluate(sampler.ThroughputMaxExpr)
+								maxVal, err := strconv.ParseFloat(maxStr, 64)
+								if err != nil || maxVal < 0 {
+									maxVal = 0
+								}
+
+								shouldExecute := false
+								if sampler.ThroughputStyle == 1 {
+									// Percent Executions (0.0 to 100.0)
+									if maxVal >= 100.0 {
+										shouldExecute = true
+									} else if maxVal > 0 {
+										shouldExecute = (rand.Float64() * 100.0) < maxVal
+									}
+								} else {
+									// Total Executions
+									maxTotal := int64(maxVal)
+									if maxTotal > 0 {
+										if sampler.ThroughputPerThread {
+											// Track per thread (Session)
+											if session.LoopCounters[sampler.LoopId] < int(maxTotal) {
+												shouldExecute = true
+												session.LoopCounters[sampler.LoopId]++
+											}
+										} else {
+											// Track globally
+											muIntf, _ := globalThroughputLocks.LoadOrStore(sampler.LoopId, &GlobalThroughputState{})
+											state := muIntf.(*GlobalThroughputState)
+
+											current := atomic.AddInt64(&state.Executions, 1)
+											if current <= maxTotal {
+												shouldExecute = true
+											}
+										}
+									}
+								}
+
+								if !shouldExecute {
+									step = sampler.BlockEndIndex
+								}
+							case "ThroughputEnd":
+								// Just fall through
 							case "InterleaveStart":
 								session.LoopCounters[sampler.LoopId]++
 								if len(sampler.InterleaveChildStarts) > 0 {
