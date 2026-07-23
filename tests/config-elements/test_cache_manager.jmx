@@ -7,27 +7,24 @@
       </elementProp>
     </TestPlan>
     <hashTree>
-      <RandomVariableConfig guiclass="TestBeanGUI" testclass="RandomVariableConfig" testname="Random Variable" enabled="true">
-        <stringProp name="maximumValue">999</stringProp>
-        <stringProp name="minimumValue">100</stringProp>
-        <stringProp name="outputFormat">USER_0000</stringProp>
-        <boolProp name="perThread">true</boolProp>
-        <stringProp name="randomSeed">12345</stringProp>
-        <stringProp name="variableName">randUser</stringProp>
-      </RandomVariableConfig>
+      <CacheManager guiclass="CacheManagerGui" testclass="CacheManager" testname="HTTP Cache Manager" enabled="true">
+        <boolProp name="clearEachIteration">false</boolProp>
+        <boolProp name="useExpires">true</boolProp>
+        <intProp name="maxSize">5000</intProp>
+      </CacheManager>
       <hashTree/>
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group">
-        <intProp name="ThreadGroup.num_threads">2</intProp>
-        <intProp name="ThreadGroup.ramp_time">1</intProp>
+        <intProp name="ThreadGroup.num_threads">10</intProp>
+        <intProp name="ThreadGroup.ramp_time">2</intProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
-          <stringProp name="LoopController.loops">2</stringProp>
+          <stringProp name="LoopController.loops">30</stringProp>
         </elementProp>
       </ThreadGroup>
       <hashTree>
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="HTTP Request">
           <stringProp name="HTTPSampler.domain">localhost</stringProp>
           <stringProp name="HTTPSampler.port">58080</stringProp>
-          <stringProp name="HTTPSampler.path">/test?user=${randUser}</stringProp>
+          <stringProp name="HTTPSampler.path">/test</stringProp>
           <stringProp name="HTTPSampler.method">GET</stringProp>
         </HTTPSamplerProxy>
         <hashTree/>

@@ -7,30 +7,27 @@
       </elementProp>
     </TestPlan>
     <hashTree>
-      <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
-        <collectionProp name="CookieManager.cookies">
-          <elementProp name="MyCookie" elementType="Cookie" testname="MyCookie">
-            <stringProp name="Cookie.value">12345</stringProp>
-            <stringProp name="Cookie.domain">localhost</stringProp>
-            <stringProp name="Cookie.path">/</stringProp>
-            <boolProp name="Cookie.secure">false</boolProp>
-          </elementProp>
-        </collectionProp>
-        <boolProp name="CookieManager.clearEachIteration">false</boolProp>
-      </CookieManager>
+      <RandomVariableConfig guiclass="TestBeanGUI" testclass="RandomVariableConfig" testname="Random Variable" enabled="true">
+        <stringProp name="maximumValue">999</stringProp>
+        <stringProp name="minimumValue">100</stringProp>
+        <stringProp name="outputFormat">USER_0000</stringProp>
+        <boolProp name="perThread">true</boolProp>
+        <stringProp name="randomSeed">12345</stringProp>
+        <stringProp name="variableName">randUser</stringProp>
+      </RandomVariableConfig>
       <hashTree/>
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group">
-        <intProp name="ThreadGroup.num_threads">1</intProp>
-        <intProp name="ThreadGroup.ramp_time">1</intProp>
+        <intProp name="ThreadGroup.num_threads">10</intProp>
+        <intProp name="ThreadGroup.ramp_time">2</intProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
-          <stringProp name="LoopController.loops">1</stringProp>
+          <stringProp name="LoopController.loops">30</stringProp>
         </elementProp>
       </ThreadGroup>
       <hashTree>
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="HTTP Request">
           <stringProp name="HTTPSampler.domain">localhost</stringProp>
           <stringProp name="HTTPSampler.port">58080</stringProp>
-          <stringProp name="HTTPSampler.path">/test</stringProp>
+          <stringProp name="HTTPSampler.path">/test?user=${randUser}</stringProp>
           <stringProp name="HTTPSampler.method">GET</stringProp>
         </HTTPSamplerProxy>
         <hashTree/>
