@@ -8,21 +8,36 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/antchfx/xmlquery"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 )
 
 // SharedContext holds thread-safe global states
 type SharedContext struct {
-	properties  sync.Map
-	globalCount int64
-	csvCache    sync.Map // maps fileName to *CSVSharedState
-	exprCache   sync.Map // maps resolved condition to *vm.Program
+	properties          sync.Map
+	globalCount         int64
+	csvCache            sync.Map // maps fileName to *CSVSharedState
+	exprCache           sync.Map // maps resolved condition to *vm.Program
+	xpathCache          sync.Map // maps fileName to *XPathSharedState
+	stringFromFileCache sync.Map // maps fileName to *StringFromFileState
+}
+
+type StringFromFileState struct {
+	lines   []string
+	nextRow int64
+	once    sync.Once
 }
 
 type CSVSharedState struct {
 	lines   [][]string
 	nextRow int64
+	once    sync.Once
+}
+
+type XPathSharedState struct {
+	doc  *xmlquery.Node
+	once sync.Once
 }
 
 type dummyMutex struct{}
@@ -50,41 +65,61 @@ func (e *DefaultEvaluator) EvaluateLogic(condition string) bool {
 	}
 
 	// 3. Fallback: it might be a raw expression like `"200" == "200"`
+	// IMPORTANT: Cache key is the original *condition* (before variable resolution),
+	// not the resolved value. Using resolved as the key causes unbounded cache growth
+	// because variable values change on every iteration (OOM risk).
 	var program *vm.Program
-	if cached, ok := e.shared.exprCache.Load(resolved); ok {
+	if cached, ok := e.shared.exprCache.Load(condition); ok {
 		program = cached.(*vm.Program)
-	} else {
+		// Re-run with the current resolved expression
+		res, err := expr.Run(program, nil)
+		if err != nil {
+			// Program may have been compiled from a different resolved state;
+			// fall through to recompile with the current resolved value.
+			goto recompile
+		}
+		if b, ok := res.(bool); ok {
+			return b
+		}
+		if s, ok := res.(string); ok {
+			return strings.EqualFold(s, "true")
+		}
+		return false
+	}
+
+recompile:
+	{
 		var err error
 		program, err = expr.Compile(resolved)
 		if err != nil {
 			return false // On error, treat as false
 		}
-		e.shared.exprCache.Store(resolved, program)
-	}
+		// Store compiled program keyed by original condition to prevent unbounded growth
+		e.shared.exprCache.Store(condition, program)
 
-	res, err := expr.Run(program, nil)
-	if err != nil {
-		return false
-	}
-
-	if b, ok := res.(bool); ok {
-		return b
-	}
-	// If it evaluated to a string "true"/"false"
-	if s, ok := res.(string); ok {
-		return strings.EqualFold(s, "true")
+		res, err := expr.Run(program, nil)
+		if err != nil {
+			return false
+		}
+		if b, ok := res.(bool); ok {
+			return b
+		}
+		if s, ok := res.(string); ok {
+			return strings.EqualFold(s, "true")
+		}
 	}
 
 	return false
 }
 
-// DefaultEvaluator processes JMeter variables and functions
 type DefaultEvaluator struct {
-	shared     *SharedContext
-	mu         dummyMutex // e.mu overhead eliminated via inlining
-	variables  map[string]string
-	localCount int64
-	csvRows    map[string]int // maps fileName to current row index for this thread
+	shared      *SharedContext
+	mu          dummyMutex // e.mu overhead eliminated via inlining
+	variables   map[string]string
+	localCount  int64
+	csvRows     map[string]int // maps fileName to current row index for this thread
+	threadNum   int
+	samplerName string
 }
 
 func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
@@ -107,11 +142,21 @@ func (e *DefaultEvaluator) Clone() Evaluator {
 	}
 	e.mu.RUnlock()
 	return &DefaultEvaluator{
-		shared:     e.shared, // Properties are global, share the reference
-		variables:  newVars,  // Variables are session-local, create a deep copy
-		localCount: 0,        // Counters reset per thread
-		csvRows:    make(map[string]int),
+		shared:      e.shared, // Properties are global, share the reference
+		variables:   newVars,  // Variables are session-local, create a deep copy
+		localCount:  0,        // Counters reset per thread
+		csvRows:     make(map[string]int),
+		threadNum:   e.threadNum,
+		samplerName: e.samplerName,
 	}
+}
+
+func (e *DefaultEvaluator) SetThreadNum(num int) {
+	e.threadNum = num
+}
+
+func (e *DefaultEvaluator) SetSamplerName(name string) {
+	e.samplerName = name
 }
 
 // AddProperties merges additional properties into the evaluator
@@ -216,12 +261,6 @@ func (e *DefaultEvaluator) evaluateInner(inner string) string {
 
 	// It's a Variable
 	vName := inner
-	if strings.HasPrefix(vName, "A_") {
-		countStr := e.variables["__counter"]
-		if countStr != "" {
-			vName = "A_" + countStr
-		}
-	}
 
 	val, exists := e.variables[vName]
 	if exists {
@@ -254,16 +293,113 @@ func (e *DefaultEvaluator) evaluateFunction(funcStr string) string {
 	return "${" + funcStr + "}"
 }
 
-// mapJavaTimeToGo translates common Java SimpleDateFormat strings to Go time layouts
+// mapJavaTimeToGo translates common Java SimpleDateFormat strings to Go time layouts.
+// Processes longest tokens first to avoid partial replacement collisions.
 func mapJavaTimeToGo(javaFormat string) string {
-	f := strings.ReplaceAll(javaFormat, "yyyy", "2006")
-	f = strings.ReplaceAll(f, "MM", "01")
-	f = strings.ReplaceAll(f, "dd", "02")
-	f = strings.ReplaceAll(f, "HH", "15")
-	f = strings.ReplaceAll(f, "mm", "04")
-	f = strings.ReplaceAll(f, "ss", "05")
-	f = strings.ReplaceAll(f, "SSS", "000")
-	return f
+	var result strings.Builder
+	i := 0
+	for i < len(javaFormat) {
+		// 4-char tokens
+		if i+4 <= len(javaFormat) {
+			four := javaFormat[i : i+4]
+			if four == "yyyy" {
+				result.WriteString("2006")
+				i += 4
+				continue
+			}
+			if four == "EEEE" {
+				result.WriteString("Monday")
+				i += 4
+				continue
+			}
+			if four == "MMMM" {
+				result.WriteString("January")
+				i += 4
+				continue
+			}
+		}
+		// 3-char tokens
+		if i+3 <= len(javaFormat) {
+			three := javaFormat[i : i+3]
+			if three == "SSS" {
+				result.WriteString("000")
+				i += 3
+				continue
+			}
+			if three == "EEE" {
+				result.WriteString("Mon")
+				i += 3
+				continue
+			}
+			if three == "MMM" {
+				result.WriteString("Jan")
+				i += 3
+				continue
+			}
+		}
+		// 2-char tokens
+		if i+2 <= len(javaFormat) {
+			two := javaFormat[i : i+2]
+			switch two {
+			case "yy":
+				result.WriteString("06")
+				i += 2
+				continue
+			case "MM":
+				result.WriteString("01")
+				i += 2
+				continue
+			case "dd":
+				result.WriteString("02")
+				i += 2
+				continue
+			case "HH":
+				result.WriteString("15")
+				i += 2
+				continue
+			case "hh":
+				result.WriteString("03") // 12-hour clock
+				i += 2
+				continue
+			case "mm":
+				result.WriteString("04")
+				i += 2
+				continue
+			case "ss":
+				result.WriteString("05")
+				i += 2
+				continue
+			}
+		}
+		// Single-char tokens
+		switch javaFormat[i] {
+		case 'M':
+			result.WriteString("1") // single-digit month (no leading zero)
+		case 'd':
+			result.WriteString("2") // single-digit day
+		case 'H':
+			// Go has no single-digit 24h token, closest is "15" but it forces 2 digits if >= 10.
+			// Actually Go does not have a native format token for hour 0-23 without leading zero!
+			// We will just use "15".
+			result.WriteString("15")
+		case 'h':
+			result.WriteString("3") // 12h hour
+		case 'm':
+			result.WriteString("4") // single-digit minute
+		case 's':
+			result.WriteString("5") // single-digit second
+		case 'a':
+			result.WriteString("PM") // AM/PM
+		case 'z':
+			result.WriteString("MST")
+		case 'Z':
+			result.WriteString("-0700")
+		default:
+			result.WriteByte(javaFormat[i])
+		}
+		i++
+	}
+	return result.String()
 }
 
 func generateUUID() string {
@@ -297,9 +433,18 @@ func splitArgs(s string) []string {
 	var args []string
 	var current strings.Builder
 	depth := 0
+	escaped := false
 
 	for _, char := range s {
+		if escaped {
+			current.WriteRune(char)
+			escaped = false
+			continue
+		}
+
 		switch char {
+		case '\\':
+			escaped = true
 		case '(', '{':
 			depth++
 			current.WriteRune(char)
@@ -316,6 +461,10 @@ func splitArgs(s string) []string {
 		default:
 			current.WriteRune(char)
 		}
+	}
+	// If trailing backslash exists, write it
+	if escaped {
+		current.WriteRune('\\')
 	}
 	args = append(args, strings.TrimSpace(current.String()))
 	return args

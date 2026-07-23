@@ -164,14 +164,10 @@ func (p *OpenModelPacer) Pace(elapsed time.Duration, hits uint64) (time.Duration
 		return 0, true
 	}
 
-	expectedHits := p.hitsAt(elapsed)
-	if float64(hits) < expectedHits {
-		return 0, false
-	}
-
-	currentRate := 0.0
+	// Find the active phase
 	accumulatedTime := time.Duration(0)
 	var activePhase *OpenModelPhase
+	currentRate := 0.0
 	for i, phase := range p.phases {
 		if elapsed >= accumulatedTime && elapsed < accumulatedTime+phase.Duration {
 			ratio := float64(elapsed-accumulatedTime) / float64(phase.Duration)
@@ -187,10 +183,18 @@ func (p *OpenModelPacer) Pace(elapsed time.Duration, hits uint64) (time.Duration
 	}
 
 	interval := float64(time.Second) / currentRate
+
+	// For random_arrivals (Poisson process): always apply exponential jitter.
+	// Do NOT allow catch-up bursting, as it would destroy the Poisson distribution.
 	if activePhase != nil && activePhase.IsRandom {
-		// Apply exponential distribution jitter for random arrivals
 		u := 1.0 - rand.Float64()
-		interval = -math.Log(u) * interval
+		return time.Duration(-math.Log(u) * interval), false
+	}
+
+	// For deterministic phases: use standard vegeta-style expected-hits catch-up
+	expectedHits := p.hitsAt(elapsed)
+	if float64(hits) < expectedHits {
+		return 0, false
 	}
 
 	return time.Duration(interval), false

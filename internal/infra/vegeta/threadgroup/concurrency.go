@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	vegeta "github.com/tsenart/vegeta/v12/lib"
@@ -57,58 +56,42 @@ func (r *ConcurrencyRunner) Run(ctx context.Context, plan *domain.TestPlan, conf
 		return engine.RunSingle(ctx, plan, config, eval, pacer, pacer.TotalDur)
 	}
 
+	if steps > targetLevel && targetLevel > 0 {
+		steps = targetLevel // Cap steps to prevent fractional users per step
+	}
+	if steps <= 0 {
+		steps = 1
+	}
 	stepDurSec := rampUpSec / steps
 	stepRate := targetLevel / steps
-
-	var binPaths []string
-	stepIndex := 1
-	baseBinPath := config.ResultBinPath
-
-	currentRate := 0
-	for currentRate < targetLevel {
-		currentRate += stepRate
-		if currentRate > targetLevel {
-			currentRate = targetLevel
-		}
-
-		durationStr := fmt.Sprintf("%ds", stepDurSec)
-		log.Printf("[VegetaRunner] --- Concurrency: Running step %d with %d Concurrent Users for %s ---", stepIndex, currentRate, durationStr)
-
-		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
-		binPaths = append(binPaths, stepBinPath)
-
-		stepConfig := *config
-		stepConfig.ResultBinPath = stepBinPath
-		stepConfig.Workers = currentRate
-
-		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
-		err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
-		if err != nil {
-			return err
-		}
-		stepIndex++
+	if stepRate <= 0 {
+		stepRate = 1
 	}
 
-	if holdSec > 0 {
-		durationStr := fmt.Sprintf("%ds", holdSec)
-		log.Printf("[VegetaRunner] --- Concurrency: Holding Target %d Concurrent Users for %s ---", targetLevel, durationStr)
+	totalDurSec := rampUpSec + holdSec
+	totalDur := time.Duration(totalDurSec) * time.Second
 
-		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
-		binPaths = append(binPaths, stepBinPath)
+	stepConfig := *config
+	stepConfig.Workers = targetLevel
 
-		stepConfig := *config
-		stepConfig.ResultBinPath = stepBinPath
-		stepConfig.Workers = targetLevel
-
-		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
-		err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
-		if err != nil {
-			return err
+	stepConfig.WorkerPacer = func(workerID uint64, elapsed time.Duration) (time.Duration, bool) {
+		if elapsed >= totalDur {
+			return 0, true
 		}
+		stepIdx := int(workerID) / stepRate
+		if stepIdx >= steps {
+			stepIdx = steps - 1
+		}
+		startTime := time.Duration(stepIdx*stepDurSec) * time.Second
+
+		if elapsed < startTime {
+			return startTime - elapsed, false
+		}
+		return 0, false
 	}
 
-	config.ResultBinPath = strings.Join(binPaths, ",")
-	return nil
+	pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+	log.Printf("[VegetaRunner] Concurrency: Running dynamic Closed Model with Max %d Users for %s", targetLevel, totalDur)
+
+	return engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, totalDur)
 }

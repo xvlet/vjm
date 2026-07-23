@@ -23,11 +23,13 @@ func (r *UltimateRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 		}
 	}
 
-	pacer := &UltimatePacer{}
+	var rows []UltimateRow
 	maxDur := time.Duration(0)
+	totalWorkers := 0
 
 	for _, rec := range ultCfg.Records {
-		targetRate, _ := strconv.ParseFloat(eval.Evaluate(rec.StartThreads), 64)
+		targetRateFloat, _ := strconv.ParseFloat(eval.Evaluate(rec.StartThreads), 64)
+		targetRate := int(targetRateFloat)
 		initDelaySec, _ := strconv.Atoi(eval.Evaluate(rec.InitialDelay))
 		startUpSec, _ := strconv.Atoi(eval.Evaluate(rec.StartupTime))
 		holdForSec, _ := strconv.Atoi(eval.Evaluate(rec.HoldLoadFor))
@@ -40,139 +42,70 @@ func (r *UltimateRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 			HoldTime:     time.Duration(holdForSec) * time.Second,
 			ShutdownTime: time.Duration(shutDownSec) * time.Second,
 		}
-		pacer.rows = append(pacer.rows, row)
+		rows = append(rows, row)
+		totalWorkers += targetRate
 
 		rowEnd := row.InitialDelay + row.StartupTime + row.HoldTime + row.ShutdownTime
 		if rowEnd > maxDur {
 			maxDur = rowEnd
 		}
 	}
-	pacer.totalDur = maxDur
 
-	log.Printf("[VegetaRunner] Found UltimateThreadGroup config. Total Duration: %s, Records: %d", maxDur, len(pacer.rows))
+	log.Printf("[VegetaRunner] Found UltimateThreadGroup config. Total Duration: %s, Records: %d, Max Users: %d", maxDur, len(rows), totalWorkers)
 
-	return engine.RunSingle(ctx, plan, config, eval, pacer, maxDur)
+	stepConfig := *config
+	stepConfig.Workers = totalWorkers
+
+	stepConfig.WorkerPacer = func(workerID uint64, elapsed time.Duration) (time.Duration, bool) {
+		if elapsed >= maxDur {
+			return 0, true
+		}
+
+		var wRow *UltimateRow
+		var wIdxInRow int
+		accum := 0
+		for i := range rows {
+			if int(workerID) < accum+rows[i].TargetRate {
+				wRow = &rows[i]
+				wIdxInRow = int(workerID) - accum
+				break
+			}
+			accum += rows[i].TargetRate
+		}
+
+		if wRow == nil {
+			return 0, true
+		}
+
+		startTime := wRow.InitialDelay
+		if wRow.TargetRate > 0 && wRow.StartupTime > 0 {
+			startTime += time.Duration(wIdxInRow) * (wRow.StartupTime / time.Duration(wRow.TargetRate))
+		}
+
+		stopTime := wRow.InitialDelay + wRow.StartupTime + wRow.HoldTime
+		if wRow.TargetRate > 0 && wRow.ShutdownTime > 0 {
+			stopTime += time.Duration(wIdxInRow) * (wRow.ShutdownTime / time.Duration(wRow.TargetRate))
+		}
+
+		if elapsed >= stopTime {
+			return 0, true
+		}
+
+		if elapsed < startTime {
+			return startTime - elapsed, false
+		}
+
+		return 0, false
+	}
+
+	pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+	return engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, maxDur)
 }
 
 type UltimateRow struct {
-	TargetRate   float64
+	TargetRate   int
 	InitialDelay time.Duration
 	StartupTime  time.Duration
 	HoldTime     time.Duration
 	ShutdownTime time.Duration
 }
-
-func (r *UltimateRow) hitsAt(t time.Duration) float64 {
-	if t <= r.InitialDelay {
-		return 0
-	}
-	t -= r.InitialDelay
-	hits := 0.0
-
-	// 1. Startup phase
-	if t <= r.StartupTime {
-		if r.StartupTime > 0 {
-			ratio := float64(t) / float64(r.StartupTime)
-			rate := ratio * r.TargetRate
-			hits += 0.5 * rate * t.Seconds()
-		} else {
-			hits += r.TargetRate * t.Seconds()
-		}
-		return hits
-	}
-	if r.StartupTime > 0 {
-		hits += 0.5 * r.TargetRate * r.StartupTime.Seconds()
-	}
-	t -= r.StartupTime
-
-	// 2. Hold phase
-	if t <= r.HoldTime {
-		hits += r.TargetRate * t.Seconds()
-		return hits
-	}
-	hits += r.TargetRate * r.HoldTime.Seconds()
-	t -= r.HoldTime
-
-	// 3. Shutdown phase
-	if t <= r.ShutdownTime {
-		if r.ShutdownTime > 0 {
-			ratio := float64(t) / float64(r.ShutdownTime)
-			rate := (1 - ratio) * r.TargetRate
-			hits += 0.5 * (r.TargetRate + rate) * t.Seconds()
-		}
-		return hits
-	}
-	if r.ShutdownTime > 0 {
-		hits += 0.5 * r.TargetRate * r.ShutdownTime.Seconds()
-	}
-
-	return hits
-}
-
-func (r *UltimateRow) rateAt(t time.Duration) float64 {
-	if t < r.InitialDelay {
-		return 0
-	}
-	t -= r.InitialDelay
-
-	if t < r.StartupTime {
-		if r.StartupTime > 0 {
-			return r.TargetRate * (float64(t) / float64(r.StartupTime))
-		}
-		return r.TargetRate
-	}
-	t -= r.StartupTime
-
-	if t < r.HoldTime {
-		return r.TargetRate
-	}
-	t -= r.HoldTime
-
-	if t < r.ShutdownTime {
-		if r.ShutdownTime > 0 {
-			return r.TargetRate * (1 - (float64(t) / float64(r.ShutdownTime)))
-		}
-	}
-	return 0
-}
-
-type UltimatePacer struct {
-	rows     []UltimateRow
-	totalDur time.Duration
-}
-
-func (p *UltimatePacer) hitsAt(t time.Duration) float64 {
-	hits := 0.0
-	for _, r := range p.rows {
-		hits += r.hitsAt(t)
-	}
-	return hits
-}
-
-func (p *UltimatePacer) Rate(t time.Duration) float64 {
-	rate := 0.0
-	for _, r := range p.rows {
-		rate += r.rateAt(t)
-	}
-	return rate
-}
-
-func (p *UltimatePacer) Pace(elapsed time.Duration, hits uint64) (time.Duration, bool) {
-	if elapsed >= p.totalDur {
-		return 0, true
-	}
-
-	expectedHits := p.hitsAt(elapsed)
-	if float64(hits) < expectedHits {
-		return 0, false
-	}
-
-	currentRate := p.Rate(elapsed)
-	if currentRate <= 0.001 {
-		return 100 * time.Millisecond, false
-	}
-
-	return time.Duration(float64(time.Second) / currentRate), false
-}
-
-var _ vegeta.Pacer = &UltimatePacer{}

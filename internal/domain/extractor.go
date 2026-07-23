@@ -31,14 +31,13 @@ func resolveMatchIndex(matchNo, resultsLen int) (int, bool) {
 	if matchIdx >= 0 && matchIdx < resultsLen {
 		return matchIdx, true
 	}
-	return 0, true // Fallback to first match for out-of-bounds, preserving existing behavior
+	return 0, false // Out-of-bounds should fail extraction, triggering default value
 }
 
-// Extractor defines the interface for JMeter PostProcessors
 type Extractor interface {
 	Extract(body []byte) (string, bool)
 	RefName() string
-	DefaultValue() string
+	DefaultValue() (string, bool)
 }
 
 // MultiExtractor defines the interface for Extractors that return multiple values (e.g. MatchNo=-1)
@@ -68,8 +67,13 @@ func NewRegexExtractor(ref, regex, tmpl, def string, matchNo int) *RegexExtracto
 	}
 }
 
-func (e *RegexExtractor) RefName() string      { return e.ReferenceName }
-func (e *RegexExtractor) DefaultValue() string { return e.DefaultValueStr }
+func (e *RegexExtractor) RefName() string { return e.ReferenceName }
+func (e *RegexExtractor) DefaultValue() (string, bool) {
+	if e.DefaultValueStr == "" {
+		return "", false
+	}
+	return e.DefaultValueStr, true
+}
 
 func (e *RegexExtractor) Extract(body []byte) (string, bool) {
 	if e.compiledRegex == nil {
@@ -90,7 +94,7 @@ func (e *RegexExtractor) Extract(body []byte) (string, bool) {
 	// Handle template replacement, e.g. $1$ or $1$ - $2$
 	if e.Template != "" {
 		result := e.Template
-		for i := 1; i < len(match); i++ {
+		for i := 0; i < len(match); i++ {
 			placeholder := "$" + strconv.Itoa(i) + "$"
 			result = strings.ReplaceAll(result, placeholder, string(match[i]))
 		}
@@ -126,7 +130,7 @@ func (e *RegexExtractor) ExtractMulti(body []byte) (map[string]string, bool) {
 
 		if e.Template != "" {
 			val = e.Template
-			for j := 1; j < len(match); j++ {
+			for j := 0; j < len(match); j++ {
 				placeholder := "$" + strconv.Itoa(j) + "$"
 				val = strings.ReplaceAll(val, placeholder, string(match[j]))
 			}
@@ -147,8 +151,13 @@ type JSONExtractor struct {
 	MatchNo         int
 }
 
-func (e *JSONExtractor) RefName() string      { return e.ReferenceName }
-func (e *JSONExtractor) DefaultValue() string { return e.DefaultValueStr }
+func (e *JSONExtractor) RefName() string { return e.ReferenceName }
+func (e *JSONExtractor) DefaultValue() (string, bool) {
+	if e.DefaultValueStr == "" {
+		return "", false
+	}
+	return e.DefaultValueStr, true
+}
 
 func (e *JSONExtractor) Extract(body []byte) (string, bool) {
 	results, ok := EvaluateJSONPathMulti(body, e.JSONPathExpr)
@@ -254,11 +263,14 @@ type HtmlExtractor struct {
 }
 
 func (e *HtmlExtractor) RefName() string { return e.ReferenceName }
-func (e *HtmlExtractor) DefaultValue() string {
+func (e *HtmlExtractor) DefaultValue() (string, bool) {
 	if e.DefaultEmptyValue {
-		return ""
+		return "", true
 	}
-	return e.DefaultValueStr
+	if e.DefaultValueStr == "" {
+		return "", false
+	}
+	return e.DefaultValueStr, true
 }
 
 func (e *HtmlExtractor) extractAll(body []byte) ([]string, bool) {
@@ -326,8 +338,13 @@ type JMESPathExtractor struct {
 	DefaultValueStr string
 }
 
-func (e *JMESPathExtractor) RefName() string      { return e.ReferenceName }
-func (e *JMESPathExtractor) DefaultValue() string { return e.DefaultValueStr }
+func (e *JMESPathExtractor) RefName() string { return e.ReferenceName }
+func (e *JMESPathExtractor) DefaultValue() (string, bool) {
+	if e.DefaultValueStr == "" {
+		return "", false
+	}
+	return e.DefaultValueStr, true
+}
 
 func (e *JMESPathExtractor) extractAll(body []byte) ([]string, bool) {
 	var jsonData interface{}
@@ -398,11 +415,14 @@ type BoundaryExtractor struct {
 }
 
 func (e *BoundaryExtractor) RefName() string { return e.ReferenceName }
-func (e *BoundaryExtractor) DefaultValue() string {
+func (e *BoundaryExtractor) DefaultValue() (string, bool) {
 	if e.DefaultEmptyValue {
-		return ""
+		return "", true
 	}
-	return e.DefaultValueStr
+	if e.DefaultValueStr == "" {
+		return "", false
+	}
+	return e.DefaultValueStr, true
 }
 
 func (e *BoundaryExtractor) extractAll(body []byte) ([]string, bool) {
@@ -478,8 +498,8 @@ type DebugPostProcessor struct {
 }
 
 // Implement Extractor interface so it can be appended to sampler.Extractors
-func (e *DebugPostProcessor) RefName() string      { return "__DEBUG__" }
-func (e *DebugPostProcessor) DefaultValue() string { return "" }
+func (e *DebugPostProcessor) RefName() string              { return "__DEBUG__" }
+func (e *DebugPostProcessor) DefaultValue() (string, bool) { return "", false }
 func (e *DebugPostProcessor) Extract(body []byte) (string, bool) {
 	return "", false
 }
@@ -513,8 +533,8 @@ type ResultAction struct {
 	Action int // 0: Continue, 1: Stop Thread, 2: Stop Test, 3: Stop Test Now, 4: Start Next Loop, 5: Start Next Iteration of Current Loop, 6: Break Current Loop
 }
 
-func (r *ResultAction) RefName() string      { return "__RESULT_ACTION__" }
-func (r *ResultAction) DefaultValue() string { return "" }
+func (r *ResultAction) RefName() string              { return "__RESULT_ACTION__" }
+func (r *ResultAction) DefaultValue() (string, bool) { return "", false }
 func (r *ResultAction) Extract(body []byte) (string, bool) {
 	return "", false
 }
@@ -534,8 +554,11 @@ func (e *XPathExtractor) RefName() string {
 	return e.ReferenceName
 }
 
-func (e *XPathExtractor) DefaultValue() string {
-	return e.DefaultVal
+func (e *XPathExtractor) DefaultValue() (string, bool) {
+	if e.DefaultVal == "" {
+		return "", false
+	}
+	return e.DefaultVal, true
 }
 
 func (e *XPathExtractor) Extract(body []byte) (string, bool) {

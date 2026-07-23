@@ -66,7 +66,7 @@ func TestXPathExtractorExecution(t *testing.T) {
 	}
 
 	eval := evaluator.NewDefaultEvaluator(nil)
-	attacker := engine.NewStatefulAttacker(1, vegeta.ConstantPacer{Freq: 1, Per: time.Second}, 3*time.Second)
+	attacker := engine.NewStatefulAttacker(1, vegeta.ConstantPacer{Freq: 1, Per: time.Second}, 2*time.Second, true, nil)
 
 	results := attacker.Attack(context.Background(), plan, eval)
 

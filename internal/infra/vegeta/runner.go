@@ -151,23 +151,24 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 				continue
 			}
 			in, err := os.Open(partPath)
-			if err == nil {
-				dec := vegeta.NewDecoder(in)
-				for {
-					var res vegeta.Result
-					if err := dec.Decode(&res); err != nil {
-						if err == io.EOF {
-							break
-						}
-						return fmt.Errorf("failed to decode part result: %w", err)
-					}
-					if err := enc.Encode(&res); err != nil {
-						return fmt.Errorf("failed to encode merged result: %w", err)
-					}
-				}
-				_ = in.Close()
-				_ = os.Remove(partPath)
+			if err != nil {
+				return fmt.Errorf("failed to open partition file %s: %w", partPath, err)
 			}
+			dec := vegeta.NewDecoder(in)
+			for {
+				var res vegeta.Result
+				if err := dec.Decode(&res); err != nil {
+					if err == io.EOF {
+						break
+					}
+					return fmt.Errorf("failed to decode part result: %w", err)
+				}
+				if err := enc.Encode(&res); err != nil {
+					return fmt.Errorf("failed to encode merged result: %w", err)
+				}
+			}
+			_ = in.Close()
+			_ = os.Remove(partPath)
 		}
 	}
 

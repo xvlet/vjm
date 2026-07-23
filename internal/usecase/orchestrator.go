@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/xvlet/vjm/internal/domain"
 	"github.com/xvlet/vjm/internal/evaluator"
@@ -31,7 +32,13 @@ func NewReportOnlyUsecase(rep JmeterReporter) StressTestUsecase {
 	return &defaultStressTestUsecase{reporter: rep}
 }
 
-func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.TestConfig) error {
+func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.TestConfig) (err error) {
+	defer func() {
+		if err != nil {
+			_ = os.Remove(config.ResultBinPath)
+			_ = os.Remove(config.ResultJtlPath)
+		}
+	}()
 	// Guard against misconfigured report-only instances
 	if u.jmxParser == nil || u.runner == nil {
 		return fmt.Errorf("Execute requires a fully configured usecase; use NewStressTestUsecase")
@@ -95,7 +102,7 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 		log.Println("[Usecase] Generating HTML Report...")
 		err = u.reporter.GenerateHTML(config.ResultJtlPath, config.ReportDirPath, 1000)
 		if err != nil {
-			log.Printf("[WARNING] HTML report generation failed: %v", err)
+			return fmt.Errorf("HTML report generation failed: %w", err)
 		}
 	}
 

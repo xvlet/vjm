@@ -24,9 +24,25 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 		if len(tg.CSVDataSets) > 0 || tg.CookieManager != nil || tg.CacheManager != nil || tg.DNSCacheManager != nil || tg.AuthManager != nil || len(tg.Counters) > 0 || len(tg.RandomVariables) > 0 || len(tg.Timers) > 0 {
 			isStateful = true
 		}
+		if !tg.ContinueForever && tg.Loops > 0 {
+			isStateful = true
+		}
 		for _, s := range tg.Samplers {
 			if len(s.Extractors) > 0 || s.IsControlFlow {
 				isStateful = true
+				break
+			}
+		}
+	}
+
+	needsBody := len(plan.ResultSavers) > 0
+	for _, tg := range plan.ThreadGroups {
+		if len(tg.ResultSavers) > 0 {
+			needsBody = true
+		}
+		for _, s := range tg.Samplers {
+			if len(s.Extractors) > 0 || len(s.Assertions) > 0 {
+				needsBody = true
 				break
 			}
 		}
@@ -39,7 +55,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 		if config.Workers > 0 {
 			workers = uint64(config.Workers)
 		}
-		statefulAttacker := NewStatefulAttacker(workers, pacer, dur)
+		statefulAttacker := NewStatefulAttacker(workers, pacer, dur, needsBody, config.WorkerPacer)
 		resultsChan = statefulAttacker.Attack(ctx, plan, eval)
 	} else {
 		var atkOpts []func(*vegeta.Attacker)
@@ -48,6 +64,8 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			atkOpts = append(atkOpts, vegeta.Workers(10))
 			atkOpts = append(atkOpts, vegeta.MaxWorkers(uint64(config.Workers)))
 		}
+		// Non-stateful attacks do not use the response body, so we can set MaxBody to 0 to prevent OOM
+		atkOpts = append(atkOpts, vegeta.MaxBody(0))
 		atkOpts = append(atkOpts, vegeta.KeepAlive(true))
 		atkOpts = append(atkOpts, vegeta.Connections(10000))
 		atkOpts = append(atkOpts, vegeta.MaxConnections(10000))
@@ -180,13 +198,18 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 		intervalErrors  atomic.Int64
 		totalReqs       atomic.Int64
 	)
-	// [PERF] Lock-free histogram: 2000 buckets × 0.5ms = 0~999.5ms range covered
+	// [PERF] Lock-free histogram: 60000 buckets × 1ms = 0~59999ms range covered
 	// Removes per-request mutex lock + periodic sorting (23000 items) every 5 seconds
-	const latBucketCount = 2000
+	const latBucketCount = 60000
 	var latBuckets [latBucketCount]atomic.Int64
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+
+	backendMetricsChan := startBackendListeners(plan)
+	if backendMetricsChan != nil {
+		defer close(backendMetricsChan)
+	}
 
 	attackStart := time.Now()
 
@@ -204,7 +227,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			intervalLatency.Add(int64(res.Latency))
 
 			latMs := float64(res.Latency) / 1e6
-			bucketIdx := int(latMs * 2)
+			bucketIdx := int(latMs)
 			if bucketIdx >= latBucketCount {
 				bucketIdx = latBucketCount - 1
 			}
@@ -242,14 +265,14 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			maxLat := 0.0
 			if bucketTotal > 0 {
 				if maxBucketIdx >= 0 {
-					maxLat = float64(maxBucketIdx) * 0.5
+					maxLat = float64(maxBucketIdx)
 				}
 				target := int64(float64(bucketTotal)*0.99) + 1
 				var cumulative int64
 				for i := 0; i < latBucketCount; i++ {
 					cumulative += bucketSnapshot[i]
 					if cumulative >= target {
-						p99 = float64(i) * 0.5
+						p99 = float64(i)
 						break
 					}
 				}
@@ -270,6 +293,22 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			}
 			log.Printf("[Dashboard: %s] %02d:%02d | TPS: %5.1f | Avg: %5.1fms | P99: %5.1fms | Max: %5.1fms | Err: %3.1f%% | TotReq: %d",
 				tgName, int(elapsed.Minutes()), int(elapsed.Seconds())%60, tps, avgLatMs, p99, maxLat, errPct, tReqs)
+
+			if backendMetricsChan != nil {
+				select {
+				case backendMetricsChan <- BackendMetrics{
+					Timestamp: time.Now(),
+					TgName:    tgName,
+					TotalReqs: iReqs,
+					OkReqs:    iReqs - iErrs,
+					KoReqs:    iErrs,
+					AvgLat:    avgLatMs,
+					P99Lat:    p99,
+					MaxLat:    maxLat,
+				}:
+				default:
+				}
+			}
 		}
 
 		if resultsChan == nil {

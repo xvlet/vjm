@@ -55,8 +55,8 @@ func TestResultActionExecution(t *testing.T) {
 	}
 
 	eval := evaluator.NewDefaultEvaluator(nil)
-	attacker := engine.NewStatefulAttacker(1, vegeta.ConstantPacer{Freq: 1, Per: time.Second}, 5*time.Second)
-
+	pacer := vegeta.ConstantPacer{Freq: 1, Per: time.Second}
+	attacker := engine.NewStatefulAttacker(1, pacer, 5*time.Second, true, nil)
 	results := attacker.Attack(context.Background(), plan, eval)
 
 	var successReqCount int
