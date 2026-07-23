@@ -2,10 +2,8 @@ package threadgroup
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	vegeta "github.com/tsenart/vegeta/v12/lib"
@@ -34,70 +32,41 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 
 	log.Printf("[VegetaRunner] Found SteppingThreadGroup config. MaxRate: %d, StepRate: %d", maxRate, stepRate)
 
-	if initDelaySec > 0 {
-		log.Printf("[VegetaRunner] Initial delay for %ds", initDelaySec)
-		select {
-		case <-time.After(time.Duration(initDelaySec) * time.Second):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-
-	currentRate := 0
 	if stepRate <= 0 {
 		stepRate = maxRate
 	}
 
-	var binPaths []string
-	stepIndex := 1
-	baseBinPath := config.ResultBinPath
-
-	for currentRate < maxRate {
-		currentRate += stepRate
-		if currentRate > maxRate {
-			currentRate = maxRate
-		}
-
-		if stepDurSec > 0 {
-			durationStr := fmt.Sprintf("%ds", stepDurSec)
-			log.Printf("[VegetaRunner] --- Stepping: Running step %d with %d Concurrent Users for %s ---", stepIndex, currentRate, durationStr)
-
-			stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
-			binPaths = append(binPaths, stepBinPath)
-
-			stepConfig := *config
-			stepConfig.ResultBinPath = stepBinPath
-			stepConfig.Workers = currentRate
-
-			dur, _ := time.ParseDuration(durationStr)
-			pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
-			err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
-			if err != nil {
-				return err
-			}
-			stepIndex++
-		}
+	steps := maxRate / stepRate
+	if maxRate%stepRate != 0 {
+		steps++
 	}
 
-	if holdDurSec > 0 {
-		durationStr := fmt.Sprintf("%ds", holdDurSec)
-		log.Printf("[VegetaRunner] --- Stepping: Holding Max %d Concurrent Users for %s ---", maxRate, durationStr)
+	totalRampSec := steps * stepDurSec
+	totalDurSec := initDelaySec + totalRampSec + holdDurSec
+	totalDur := time.Duration(totalDurSec) * time.Second
 
-		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
-		binPaths = append(binPaths, stepBinPath)
+	stepConfig := *config
+	stepConfig.Workers = maxRate
 
-		stepConfig := *config
-		stepConfig.ResultBinPath = stepBinPath
-		stepConfig.Workers = maxRate
-
-		dur, _ := time.ParseDuration(durationStr)
-		pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
-		err := engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, dur)
-		if err != nil {
-			return err
+	stepConfig.WorkerPacer = func(workerID uint64, elapsed time.Duration) (time.Duration, bool) {
+		if elapsed >= totalDur {
+			return 0, true
 		}
+
+		stepIdx := int(workerID) / stepRate
+		if stepIdx >= steps {
+			stepIdx = steps - 1
+		}
+
+		startTime := time.Duration(initDelaySec+stepIdx*stepDurSec) * time.Second
+		if elapsed < startTime {
+			return startTime - elapsed, false
+		}
+		return 0, false
 	}
 
-	config.ResultBinPath = strings.Join(binPaths, ",")
-	return nil
+	pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
+	log.Printf("[VegetaRunner] Stepping: Running dynamic Closed Model with Max %d Users for %s", maxRate, totalDur)
+
+	return engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, totalDur)
 }

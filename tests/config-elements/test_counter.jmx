@@ -17,10 +17,10 @@
       </CounterConfig>
       <hashTree/>
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group">
-        <intProp name="ThreadGroup.num_threads">2</intProp>
-        <intProp name="ThreadGroup.ramp_time">1</intProp>
+        <intProp name="ThreadGroup.num_threads">10</intProp>
+        <intProp name="ThreadGroup.ramp_time">2</intProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
-          <stringProp name="LoopController.loops">2</stringProp>
+          <stringProp name="LoopController.loops">30</stringProp>
         </elementProp>
       </ThreadGroup>
       <hashTree>

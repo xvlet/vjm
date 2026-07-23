@@ -344,6 +344,10 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 | `${__changeCase(str,mode,var)}` | Changes case (UPPER/LOWER/CAPITALIZE) | `${__changeCase(hello,UPPER)}` |
 | `${__char(num...)}` | Generates Unicode char from number | `${__char(0x41)}` |
 | `${__XPath(file,expr)}` | Use an XPath expression to read from a file | `${__XPath(data.xml,//node)}` |
+| `${__threadNum()}` | Returns the current thread (virtual user) number (1-based) | `${__threadNum()}` |
+| `${__samplerName(var)}` | Returns the current sampler name; optionally stores in variable | `${__samplerName(SNAME)}` |
+| `${__StringFromFile(file,var)}` | Reads lines from a file sequentially (round-robin, thread-safe) | `${__StringFromFile(data.txt,LINE)}` |
+| `${__regexFunction(...)}` | Regex extraction (returns default value in vjm; use Regex Extractor instead) | `${__regexFunction(regex,tmpl,match,def)}` |
 | `${varName}` | Variable reference | `${target.host}` |
 
 ---
@@ -477,7 +481,7 @@ no -p -o tcp_ephemeral_low=10241  # Expand ephemeral port range
 - [x] **View Results Tree** (File output only)
 - [x] **Summary Report** (File output only)
 - [x] **Aggregate Report** (File output only)
-- [x] **Backend Listener** (Parsed, DB logic pending)
+- [x] **Backend Listener** (InfluxDB Line Protocol v1/v2 transmission implemented; 5-second interval push)
 - [x] **Aggregate Graph** (File output only)
 - [x] **Assertion Results** (File output only)
 - [x] **Comparison Assertion Visualizer** (File output only)

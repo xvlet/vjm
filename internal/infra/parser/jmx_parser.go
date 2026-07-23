@@ -35,9 +35,14 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentThreadGroup *domain.ThreadGroup
 	// samplerStack tracks open HTTPSamplerProxy elements so HeaderManager (in sibling hashTree) can attach to the right request.
 	var lastCompletedReq *domain.RequestTemplate
+	// lastSamplerHashTreeDepth tracks the hashTree depth that is a direct child of the last HTTPSamplerProxy.
+	// Extractors/Assertions at this exact depth belong to that sampler; at other depths they are ThreadGroup-level.
+	var lastSamplerHashTreeDepth = -1
+	var expectingSamplerChildTree bool // true right after parsing an HTTPSamplerProxy element, before its hashTree
 	var currentTimer *domain.Timer
 
-	var currentTag, nameAttr, currentHeaderName, currentArgName string
+	var currentTag, nameAttr, currentHeaderName, currentArgName, currentArgValue string
+	var isArgumentProp bool
 	var inHeaderManager, postBodyRaw, inConfigTestElement bool
 	var currentReq *domain.RequestTemplate
 	var domainVal, portVal, pathVal, protocolVal string
@@ -47,6 +52,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var userParamState string
 	var userParamNames []string
 	var userParamValues []string
+	// inMainControllerElementProp tracks when we're inside <elementProp name="ThreadGroup.main_controller">.
+	// LoopController.loops inside this elementProp sets the ThreadGroup loop count, not a new LoopController.
+	var inMainControllerElementProp bool
 
 	var hashTreeDepth int
 	var pendingWeight float64
@@ -102,6 +110,33 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var pendingModuleTargetNodePath []string
 	var nextLoopId = 1
 	var pendingIncludePath string
+
+	activeExtractors := make(map[int][]domain.Extractor)
+	activeAssertions := make(map[int][]domain.Assertion)
+	activePreProcessors := make(map[int][]domain.PreProcessor)
+	firstSamplerAtDepth := make(map[int]int)
+
+	appendSamplers := func(samplers ...*domain.Sampler) {
+		if currentThreadGroup == nil {
+			return
+		}
+		for _, sampler := range samplers {
+			if !sampler.IsControlFlow {
+				for d := 1; d <= hashTreeDepth; d++ {
+					if exts, ok := activeExtractors[d]; ok {
+						sampler.Extractors = append(sampler.Extractors, exts...)
+					}
+					if asts, ok := activeAssertions[d]; ok {
+						sampler.Assertions = append(sampler.Assertions, asts...)
+					}
+					if pres, ok := activePreProcessors[d]; ok {
+						sampler.PreProcessors = append(sampler.PreProcessors, pres...)
+					}
+				}
+			}
+			currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, sampler)
+		}
+	}
 
 	// Counters and tracking arrays bool
 	var inFloatProperty bool
@@ -218,6 +253,15 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 
 			if currentTag == "hashTree" {
 				hashTreeDepth++
+				if currentThreadGroup != nil {
+					firstSamplerAtDepth[hashTreeDepth] = len(currentThreadGroup.Samplers)
+				}
+				// CRITICAL-2: Track the depth of the hashTree that is a direct child of HTTPSamplerProxy.
+				// Extractors/Assertions found at this exact depth belong to the sampler; others are TG-level.
+				if expectingSamplerChildTree {
+					lastSamplerHashTreeDepth = hashTreeDepth
+					expectingSamplerChildTree = false
+				}
 				if pendingWeight > 0 {
 					weightMap[hashTreeDepth] = pendingWeight
 					activeWeight = pendingWeight
@@ -247,8 +291,46 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					subPlan, err := subParser.Parse(incPath)
 					if err == nil && subPlan != nil {
 						for _, tg := range subPlan.ThreadGroups {
-							// Append samplers
-							currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, tg.Samplers...)
+							// CRITICAL-1: Calculate the index offset before appending.
+							// All control-flow jump indices in the sub-plan are relative to that
+							// sub-plan's 0-based sampler array. They must be rebased to the
+							// parent ThreadGroup's current sampler count.
+							offset := len(currentThreadGroup.Samplers)
+							if offset > 0 {
+								for _, s := range tg.Samplers {
+									if !s.IsControlFlow {
+										continue
+									}
+									s.LoopJumpIndex += offset
+									s.BlockEndIndex += offset
+									for i := range s.RandomChildStarts {
+										s.RandomChildStarts[i] += offset
+									}
+									for i := range s.RandomChildEnds {
+										s.RandomChildEnds[i] += offset
+									}
+									for i := range s.RandomOrderChildStarts {
+										s.RandomOrderChildStarts[i] += offset
+									}
+									for i := range s.RandomOrderChildEnds {
+										s.RandomOrderChildEnds[i] += offset
+									}
+									for i := range s.InterleaveChildStarts {
+										s.InterleaveChildStarts[i] += offset
+									}
+									for i := range s.InterleaveChildEnds {
+										s.InterleaveChildEnds[i] += offset
+									}
+									for i := range s.SwitchChildStarts {
+										s.SwitchChildStarts[i] += offset
+									}
+									for i := range s.SwitchChildEnds {
+										s.SwitchChildEnds[i] += offset
+									}
+								}
+							}
+							// Append samplers after fixing indices
+							appendSamplers(tg.Samplers...)
 							// Append configs
 							currentThreadGroup.CSVDataSets = append(currentThreadGroup.CSVDataSets, tg.CSVDataSets...)
 							currentThreadGroup.Timers = append(currentThreadGroup.Timers, tg.Timers...)
@@ -264,7 +346,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex: startIndex,
 						IsWhile:    false,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow: true,
 						ControlType:   "LoopStart",
 						LoopId:        pendingLoopId,
@@ -283,7 +365,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex: startIndex,
 						IsWhile:    true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow:  true,
 						ControlType:    "WhileStart",
 						LoopId:         pendingWhileId,
@@ -300,7 +382,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex: startIndex,
 						IsRuntime:  true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow:      true,
 						ControlType:        "RuntimeStart",
 						LoopId:             pendingRuntimeId,
@@ -311,7 +393,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 
 				if pendingModuleId > 0 && currentThreadGroup != nil {
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow:        true,
 						ControlType:          "ModuleCall",
 						LoopId:               pendingModuleId,
@@ -329,7 +411,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex:   startIndex,
 						IsThroughput: true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow:       true,
 						ControlType:         "ThroughputStart",
 						LoopId:              pendingThroughputId,
@@ -350,7 +432,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						LoopId:     pendingSwitchId,
 						StartIndex: startIndex,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow:   true,
 						ControlType:     "SwitchStart",
 						LoopId:          pendingSwitchId,
@@ -368,7 +450,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex: startIndex,
 						IsCritical: true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow:    true,
 						ControlType:      "CriticalStart",
 						LoopId:           pendingCriticalId,
@@ -385,7 +467,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex: startIndex,
 						IsForEach:  true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow:       true,
 						ControlType:         "ForEachStart",
 						LoopId:              pendingForEachId,
@@ -410,7 +492,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex:   startIndex,
 						IsInterleave: true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow: true,
 						ControlType:   "InterleaveStart",
 						LoopId:        pendingInterleaveId,
@@ -425,7 +507,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex: startIndex,
 						IsOnceOnly: true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow: true,
 						ControlType:   "OnceOnlyStart",
 						LoopId:        pendingOnceOnlyId,
@@ -440,7 +522,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex: startIndex,
 						IsRandom:   true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow: true,
 						ControlType:   "RandomStart",
 						LoopId:        pendingRandomId,
@@ -455,7 +537,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						StartIndex:    startIndex,
 						IsRandomOrder: true,
 					})
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						IsControlFlow: true,
 						ControlType:   "RandomOrderStart",
 						LoopId:        pendingRandomOrderId,
@@ -522,7 +604,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					Headers: make(map[string]string),
 				}
 				if currentThreadGroup != nil {
-					currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+					appendSamplers(&domain.Sampler{
 						Name:              nameAttr,
 						Request:           currentReq,
 						Weight:            activeWeight,
@@ -882,6 +964,23 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if isAuth {
 					currentAuthorization = &domain.Authorization{}
 				}
+			} else if currentTag == "elementProp" && nameAttr == "ThreadGroup.main_controller" {
+				// HIGH-14: This elementProp wraps the ThreadGroup's built-in LoopController.
+				// LoopController.loops inside this element sets ThreadGroup.Loops directly.
+				inMainControllerElementProp = true
+			} else if currentTag == "elementProp" {
+				var isArg bool
+				for _, attr := range se.Attr {
+					if attr.Name.Local == "elementType" && (attr.Value == "HTTPArgument" || attr.Value == "Argument") {
+						isArg = true
+						break
+					}
+				}
+				if isArg {
+					isArgumentProp = true
+					currentArgName = ""
+					currentArgValue = ""
+				}
 			}
 
 		case xml.EndElement:
@@ -913,7 +1012,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 							endType = "ThroughputEnd"
 						}
 
-						currentThreadGroup.Samplers = append(currentThreadGroup.Samplers, &domain.Sampler{
+						appendSamplers(&domain.Sampler{
 							IsControlFlow: true,
 							ControlType:   endType,
 							LoopId:        top.LoopId,
@@ -943,6 +1042,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				delete(ifConditionMap, hashTreeDepth)
 				delete(transactionNameMap, hashTreeDepth)
 				delete(transactionParentMap, hashTreeDepth)
+				delete(activeExtractors, hashTreeDepth)
+				delete(activeAssertions, hashTreeDepth)
+				delete(activePreProcessors, hashTreeDepth)
+				delete(firstSamplerAtDepth, hashTreeDepth)
 				hashTreeDepth--
 				if hashTreeDepth == 2 {
 					currentThreadGroup = nil
@@ -972,16 +1075,25 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if se.Name.Local == "JSONPostProcessor" {
 				inJSONExtractor = false
 				if currentJSONExtractor != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, currentJSONExtractor)
+					} else {
+						activeExtractors[hashTreeDepth] = append(activeExtractors[hashTreeDepth], currentJSONExtractor)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Extractors = append(currentThreadGroup.Samplers[i].Extractors, currentJSONExtractor)
+								}
+							}
+						}
 					}
 				}
 				currentJSONExtractor = nil
 			} else if se.Name.Local == "RegexExtractor" {
 				inRegexExtractor = false
 				if currentRegexExtractor != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, domain.NewRegexExtractor(
 							currentRegexExtractor.ReferenceName,
@@ -996,54 +1108,108 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 			} else if se.Name.Local == "HtmlExtractor" {
 				inHtmlExtractor = false
 				if currentHtmlExtractor != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, currentHtmlExtractor)
+					} else {
+						activeExtractors[hashTreeDepth] = append(activeExtractors[hashTreeDepth], currentHtmlExtractor)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Extractors = append(currentThreadGroup.Samplers[i].Extractors, currentHtmlExtractor)
+								}
+							}
+						}
 					}
 				}
 				currentHtmlExtractor = nil
 			} else if se.Name.Local == "JMESPathExtractor" {
 				inJMESPathExtractor = false
 				if currentJMESPathExtractor != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, currentJMESPathExtractor)
+					} else {
+						activeExtractors[hashTreeDepth] = append(activeExtractors[hashTreeDepth], currentJMESPathExtractor)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Extractors = append(currentThreadGroup.Samplers[i].Extractors, currentJMESPathExtractor)
+								}
+							}
+						}
 					}
 				}
 				currentJMESPathExtractor = nil
 			} else if se.Name.Local == "BoundaryExtractor" {
 				inBoundaryExtractor = false
 				if currentBoundaryExtractor != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, currentBoundaryExtractor)
+					} else {
+						activeExtractors[hashTreeDepth] = append(activeExtractors[hashTreeDepth], currentBoundaryExtractor)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Extractors = append(currentThreadGroup.Samplers[i].Extractors, currentBoundaryExtractor)
+								}
+							}
+						}
 					}
 				}
 				currentBoundaryExtractor = nil
 			} else if se.Name.Local == "DebugPostProcessor" {
 				inDebugPostProcessor = false
 				if currentDebugPostProcessor != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, currentDebugPostProcessor)
+					} else {
+						activeExtractors[hashTreeDepth] = append(activeExtractors[hashTreeDepth], currentDebugPostProcessor)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Extractors = append(currentThreadGroup.Samplers[i].Extractors, currentDebugPostProcessor)
+								}
+							}
+						}
 					}
 				}
 				currentDebugPostProcessor = nil
 			} else if se.Name.Local == "ResultAction" {
 				inResultAction = false
 				if currentResultAction != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, currentResultAction)
+					} else {
+						activeExtractors[hashTreeDepth] = append(activeExtractors[hashTreeDepth], currentResultAction)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Extractors = append(currentThreadGroup.Samplers[i].Extractors, currentResultAction)
+								}
+							}
+						}
 					}
 				}
 				currentResultAction = nil
 			} else if se.Name.Local == "XPathExtractor" {
 				inXPathExtractor = false
 				if currentXPathExtractor != nil && currentThreadGroup != nil {
-					if len(currentThreadGroup.Samplers) > 0 {
+					if len(currentThreadGroup.Samplers) > 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
 						lastSampler.Extractors = append(lastSampler.Extractors, currentXPathExtractor)
+					} else {
+						activeExtractors[hashTreeDepth] = append(activeExtractors[hashTreeDepth], currentXPathExtractor)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Extractors = append(currentThreadGroup.Samplers[i].Extractors, currentXPathExtractor)
+								}
+							}
+						}
 					}
 				}
 				currentXPathExtractor = nil
@@ -1051,11 +1217,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inResponseAssertion = false
 				if currentResponseAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentResponseAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentResponseAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentResponseAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentResponseAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentResponseAssertion = nil
@@ -1063,11 +1236,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inJSONAssertion = false
 				if currentJSONAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentJSONAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentJSONAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentJSONAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentJSONAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentJSONAssertion = nil
@@ -1075,11 +1255,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inSizeAssertion = false
 				if currentSizeAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentSizeAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentSizeAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentSizeAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentSizeAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentSizeAssertion = nil
@@ -1087,11 +1274,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inXPathAssertion = false
 				if currentXPathAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentXPathAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentXPathAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentXPathAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentXPathAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentXPathAssertion = nil
@@ -1099,11 +1293,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inCompareAssertion = false
 				if currentCompareAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentCompareAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentCompareAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentCompareAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentCompareAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentCompareAssertion = nil
@@ -1111,11 +1312,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inDurationAssertion = false
 				if currentDurationAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentDurationAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentDurationAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentDurationAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentDurationAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentDurationAssertion = nil
@@ -1135,11 +1343,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inSMIMEAssertion = false
 				if currentSMIMEAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentSMIMEAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentSMIMEAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentSMIMEAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentSMIMEAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentSMIMEAssertion = nil
@@ -1147,11 +1362,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inXMLAssertion = false
 				if currentXMLAssertion != nil && currentThreadGroup != nil {
 					lastSamplerIdx := len(currentThreadGroup.Samplers) - 1
-					if lastSamplerIdx >= 0 {
+					if lastSamplerIdx >= 0 && hashTreeDepth == lastSamplerHashTreeDepth {
 						lastSampler := currentThreadGroup.Samplers[lastSamplerIdx]
 						lastSampler.Assertions = append(lastSampler.Assertions, currentXMLAssertion)
 					} else {
-						currentThreadGroup.Assertions = append(currentThreadGroup.Assertions, currentXMLAssertion)
+						activeAssertions[hashTreeDepth] = append(activeAssertions[hashTreeDepth], currentXMLAssertion)
+						if startIdx, ok := firstSamplerAtDepth[hashTreeDepth]; ok {
+							for i := startIdx; i < len(currentThreadGroup.Samplers); i++ {
+								if !currentThreadGroup.Samplers[i].IsControlFlow {
+									currentThreadGroup.Samplers[i].Assertions = append(currentThreadGroup.Samplers[i].Assertions, currentXMLAssertion)
+								}
+							}
+						}
 					}
 				}
 				currentXMLAssertion = nil
@@ -1225,6 +1447,28 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					currentAuthManager.AuthList = append(currentAuthManager.AuthList, *currentAuthorization)
 				}
 				currentAuthorization = nil
+			} else if se.Name.Local == "elementProp" && inMainControllerElementProp {
+				inMainControllerElementProp = false
+			} else if se.Name.Local == "elementProp" && isArgumentProp {
+				if currentReq == nil && currentArgName != "" {
+					// Global User Defined Variable
+					plan.UserDefinedVariables[currentArgName] = currentArgValue
+				} else if currentReq != nil {
+					// If postBodyRaw, only use it as BodyTemplate if it's the first one without a name
+					if postBodyRaw && currentReq.BodyTemplate == "" && currentArgName == "" {
+						currentReq.BodyTemplate = currentArgValue
+					} else if !postBodyRaw && currentArgName != "" {
+						currentReq.Arguments = append(currentReq.Arguments, [2]string{currentArgName, currentArgValue})
+					} else if postBodyRaw && currentArgName != "" {
+						// JMeter edge case: parameter with postBodyRaw true? Add to arguments or URL?
+						// Wait, if it has a name, it's typically sent in URL if it's a GET, or as body if it's POST.
+						// The jmx_parser originally skipped this. We will append to arguments.
+						currentReq.Arguments = append(currentReq.Arguments, [2]string{currentArgName, currentArgValue})
+					}
+				}
+				isArgumentProp = false
+				currentArgName = ""
+				currentArgValue = ""
 			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
 				currentTimer = nil
 			} else if (se.Name.Local == "HTTPSamplerProxy" || strings.Contains(se.Name.Local, "WebSocketSampler")) && currentReq != nil {
@@ -1264,6 +1508,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				// but clear currentReq so subsequent Argument.value parsing doesn't pollute it.
 				lastCompletedReq = currentReq
 				currentReq = nil
+				// CRITICAL-2: Signal that the next hashTree we enter is this sampler's child tree.
+				// Only extractors/assertions at that depth truly belong to this sampler.
+				expectingSamplerChildTree = true
 			} else if se.Name.Local == "UserParameters" {
 				inUserParameters = false
 				for i := 0; i < len(userParamNames) && i < len(userParamValues); i++ {
@@ -1347,7 +1594,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				if nameAttr == "LoopController.continue_forever" {
 					pendingLoopContinue = (val == "true")
-					if currentThreadGroup != nil && pendingLoopId == 0 {
+					if currentThreadGroup != nil && inMainControllerElementProp {
 						currentThreadGroup.ContinueForever = pendingLoopContinue
 					}
 				}
@@ -1495,6 +1742,22 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if nameAttr == "ThroughputController.style" {
 					if v, err := strconv.Atoi(val); err == nil {
 						pendingThroughputStyle = v
+					}
+				}
+				if nameAttr == "ThreadGroup.num_threads" {
+					if currentThreadGroup != nil {
+						v, _ := strconv.Atoi(val)
+						currentThreadGroup.NumThreads = v
+						if currentThreadGroup.SteppingConfig != nil {
+							currentThreadGroup.SteppingConfig.MaxRate = val
+						}
+					}
+				}
+				if nameAttr == "ThreadGroup.ramp_time" {
+					if currentThreadGroup != nil {
+						if v, err := strconv.Atoi(val); err == nil {
+							currentThreadGroup.RampUp = v
+						}
 					}
 				}
 				if currentCacheManager != nil && nameAttr == "maxSize" {
@@ -1685,6 +1948,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "TLS", "protocol":
 					protocolVal = val
 				case "ThreadGroup.num_threads":
+					fmt.Printf("Parsed NumThreads: %s\n", val)
 					if currentThreadGroup != nil {
 						v, _ := strconv.Atoi(val)
 						currentThreadGroup.NumThreads = v
@@ -1760,7 +2024,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					currentArgName = val
 				case "LoopController.loops":
 					pendingLoopCountExpr = val
-					if currentThreadGroup != nil && pendingLoopId == 0 {
+					if currentThreadGroup != nil && inMainControllerElementProp {
 						if v, err := strconv.Atoi(val); err == nil {
 							currentThreadGroup.Loops = v
 						} else if val == "-1" {
@@ -1782,15 +2046,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "RunTime.seconds":
 					pendingRuntimeSeconds = val
 				case "Argument.value":
-					if currentReq == nil && currentArgName != "" {
-						// Global User Defined Variable (outside any sampler)
-						plan.UserDefinedVariables[currentArgName] = val
-					} else if currentReq != nil {
-						if postBodyRaw && currentReq.BodyTemplate == "" {
-							currentReq.BodyTemplate = val
-						}
-					}
-					currentArgName = "" // Reset after value
+					currentArgValue = val
 				case "Header.name":
 					if inHeaderManager {
 						currentHeaderName = val

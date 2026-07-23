@@ -31,9 +31,9 @@ func TestHTMLLinkParserEngine(t *testing.T) {
 		},
 	}
 
-	engine.EvaluatePreProcessors(session, sampler)
+	modifiedURL := engine.EvaluatePreProcessors(session, sampler)
 
-	if sampler.Request.URL != "/test/item/12345" {
-		t.Errorf("Expected URL to be mutated to /test/item/12345, got %s", sampler.Request.URL)
+	if modifiedURL != "/test/item/12345" {
+		t.Errorf("Expected URL to be mutated to /test/item/12345, got %s", modifiedURL)
 	}
 }

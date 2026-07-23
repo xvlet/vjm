@@ -80,7 +80,7 @@ func TestSampleTimeoutEngine(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	attacker := engine.NewStatefulAttacker(1, vegeta.ConstantPacer{Freq: 1, Per: time.Second}, 0)
+	attacker := engine.NewStatefulAttacker(1, vegeta.ConstantPacer{Freq: 1, Per: time.Second}, 0, false, nil)
 	ch := attacker.Attack(ctx, plan, eval)
 
 	res := <-ch

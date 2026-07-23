@@ -71,10 +71,10 @@ func TestRegExUserParametersEngine(t *testing.T) {
 		},
 	}
 
-	engine.EvaluatePreProcessors(session, sampler)
+	modifiedURL := engine.EvaluatePreProcessors(session, sampler)
 
 	expected := "/submit?hiddenField1=value1&hiddenField2=value2"
-	if sampler.Request.URL != expected {
-		t.Errorf("Expected URL to be mutated to %s, got %s", expected, sampler.Request.URL)
+	if modifiedURL != expected {
+		t.Errorf("Expected URL to be mutated to %s, got %s", expected, modifiedURL)
 	}
 }

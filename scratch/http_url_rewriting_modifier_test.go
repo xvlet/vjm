@@ -66,10 +66,10 @@ func TestURLRewritingModifierEngine(t *testing.T) {
 		},
 	}
 
-	engine.EvaluatePreProcessors(session, sampler)
+	modifiedURL := engine.EvaluatePreProcessors(session, sampler)
 
 	expected := "/dashboard?jsessionid=ABCD1234EFGH"
-	if sampler.Request.URL != expected {
-		t.Errorf("Expected URL to be mutated to %s, got %s", expected, sampler.Request.URL)
+	if modifiedURL != expected {
+		t.Errorf("Expected URL to be mutated to %s, got %s", expected, modifiedURL)
 	}
 }

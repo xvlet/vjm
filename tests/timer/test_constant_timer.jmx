@@ -21,10 +21,10 @@
           guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller"
           enabled="true">
           <boolProp name="LoopController.continue_forever">false</boolProp>
-          <stringProp name="LoopController.loops">2</stringProp>
+          <stringProp name="LoopController.loops">30</stringProp>
         </elementProp>
-        <stringProp name="ThreadGroup.num_threads">5</stringProp>
-        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+        <stringProp name="ThreadGroup.num_threads">10</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">2</stringProp>
         <boolProp name="ThreadGroup.scheduler">false</boolProp>
         <stringProp name="ThreadGroup.duration"></stringProp>
         <stringProp name="ThreadGroup.delay"></stringProp>
@@ -53,11 +53,10 @@
           <stringProp name="HTTPSampler.response_timeout"></stringProp>
         </HTTPSamplerProxy>
         <hashTree>
-          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer"
-            testname="Uniform Random Timer" enabled="true">
-            <stringProp name="ConstantTimer.delay">100</stringProp>
-            <stringProp name="RandomTimer.range">200.0</stringProp>
-          </UniformRandomTimer>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer"
+            testname="Constant Timer" enabled="true">
+            <stringProp name="ConstantTimer.delay">300</stringProp>
+          </ConstantTimer>
           <hashTree />
         </hashTree>
       </hashTree>

@@ -7,5 +7,7 @@ type Evaluator interface {
 	AddProperties(props map[string]string)
 	AddVariables(vars map[string]string)
 	SetVariable(key, value string)
+	SetThreadNum(num int)
+	SetSamplerName(name string)
 	Clone() Evaluator
 }

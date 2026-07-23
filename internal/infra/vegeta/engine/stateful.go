@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -60,7 +61,7 @@ func newSyncBarrier(size int, timeoutMs int64) *SyncBarrier {
 	}
 }
 
-func (b *SyncBarrier) Wait() {
+func (b *SyncBarrier) Wait(ctx context.Context) {
 	if b.groupSize <= 1 {
 		return
 	}
@@ -77,9 +78,14 @@ func (b *SyncBarrier) Wait() {
 	b.mutex.Unlock()
 
 	if b.timeout > 0 {
+		// Use time.NewTimer + Stop() to prevent timer memory leaks
+		timer := time.NewTimer(b.timeout)
+		defer timer.Stop()
 		select {
 		case <-rel:
-		case <-time.After(b.timeout):
+		case <-ctx.Done():
+			return
+		case <-timer.C:
 			b.mutex.Lock()
 			if b.release == rel {
 				b.count = 0
@@ -89,7 +95,10 @@ func (b *SyncBarrier) Wait() {
 			b.mutex.Unlock()
 		}
 	} else {
-		<-rel
+		select {
+		case <-rel:
+		case <-ctx.Done():
+		}
 	}
 }
 
@@ -106,37 +115,59 @@ type CSVRuntime struct {
 	VarNames []string // pre-parsed variable names (hot path optimization)
 }
 
+var globalCSVDataSetCache sync.Map // map[string]*CSVRuntimeShared
+type CSVRuntimeShared struct {
+	Lines [][]string
+	Next  int64
+	once  sync.Once
+	err   error
+}
+
 func parseCSV(cfg *domain.CSVDataSet) *CSVRuntime {
-	content, err := os.ReadFile(cfg.Filename)
-	if err != nil {
-		log.Printf("[Warning] CSVDataSet failed to read %s: %v", cfg.Filename, err)
+	actual, _ := globalCSVDataSetCache.LoadOrStore(cfg.Filename, &CSVRuntimeShared{})
+	shared := actual.(*CSVRuntimeShared)
+
+	shared.once.Do(func() {
+		f, err := os.Open(cfg.Filename)
+		if err != nil {
+			shared.err = err
+			return
+		}
+		defer func() { _ = f.Close() }()
+
+		r := csv.NewReader(f)
+		r.LazyQuotes = true
+		if cfg.Delimiter != "" {
+			r.Comma = rune(cfg.Delimiter[0])
+		} else {
+			r.Comma = ','
+		}
+
+		lines, err := r.ReadAll()
+		if err != nil {
+			shared.err = err
+			return
+		}
+
+		if cfg.IgnoreFirstLine && len(lines) > 0 {
+			lines = lines[1:]
+		}
+		shared.Lines = lines
+	})
+
+	if shared.err != nil {
+		log.Printf("[Warning] CSVDataSet failed to read %s: %v", cfg.Filename, shared.err)
 		return nil
 	}
-	var lines [][]string
-	linesRaw := strings.Split(string(content), "\n")
-	for i, line := range linesRaw {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if i == 0 && cfg.IgnoreFirstLine {
-			continue
-		}
-		delim := cfg.Delimiter
-		if delim == "" {
-			delim = ","
-		}
-		lines = append(lines, strings.Split(line, delim))
-	}
-	var next int64 = 0
+
 	var varNames []string
 	for _, vn := range strings.Split(cfg.VariableNames, ",") {
 		varNames = append(varNames, strings.TrimSpace(vn))
 	}
 	return &CSVRuntime{
 		Config:   cfg,
-		Lines:    lines,
-		Next:     &next,
+		Lines:    shared.Lines,
+		Next:     &shared.Next,
 		VarNames: varNames,
 	}
 }
@@ -162,6 +193,7 @@ var bufferPool = sync.Pool{
 }
 
 var globalLocks sync.Map
+var globalSeedCounter atomic.Uint64 // ensures unique random seeds across concurrent goroutines
 var htmlLinkRegex = regexp.MustCompile(`(?i)(?:href|action)\s*=\s*["']([^"']+)["']`)
 
 // Session represents a virtual user executing a Thread Group sequentially
@@ -199,10 +231,13 @@ func NewSession(id uint64, plan *domain.TestPlan, tg *domain.ThreadGroup, global
 		vars[k] = v
 	}
 
+	eval := globalEval.Clone()
+	eval.SetThreadNum(int(id) + 1)
+
 	return &Session{
 		ID:               id,
 		Variables:        vars,
-		Evaluator:        globalEval.Clone(),
+		Evaluator:        eval,
 		Tg:               tg,
 		Step:             0,
 		Cache:            make(map[string]*CacheEntry),
@@ -217,14 +252,16 @@ func NewSession(id uint64, plan *domain.TestPlan, tg *domain.ThreadGroup, global
 
 // StatefulAttacker is a custom attacker that manages virtual user sessions
 type StatefulAttacker struct {
-	transport *http.Transport
-	maxW      uint64
-	pacer     vegeta.Pacer
-	dur       time.Duration
-	stopped   int32
+	transport   *http.Transport
+	maxW        uint64
+	pacer       vegeta.Pacer
+	dur         time.Duration
+	stopped     int32
+	needsBody   bool
+	workerPacer domain.WorkerPacer
 }
 
-func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration) *StatefulAttacker {
+func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration, needsBody bool, workerPacer domain.WorkerPacer) *StatefulAttacker {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -240,10 +277,12 @@ func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration) 
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 	return &StatefulAttacker{
-		transport: transport,
-		maxW:      workers,
-		pacer:     pacer,
-		dur:       dur,
+		transport:   transport,
+		maxW:        workers,
+		pacer:       pacer,
+		dur:         dur,
+		needsBody:   needsBody,
+		workerPacer: workerPacer,
 	}
 }
 
@@ -268,10 +307,14 @@ func parseRandomVariable(cfg *domain.RandomVariable) *RandomVariableRuntime {
 		if err == nil {
 			r = rand.New(rand.NewPCG(seed, seed))
 		} else {
-			r = rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0))
+			// Use atomic counter as second seed component to guarantee unique seeds per goroutine
+			seqID := globalSeedCounter.Add(1)
+			r = rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), seqID))
 		}
 	} else {
-		r = rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0))
+		// Use atomic counter as second seed component to guarantee unique seeds per goroutine
+		seqID := globalSeedCounter.Add(1)
+		r = rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), seqID))
 	}
 
 	return &RandomVariableRuntime{
@@ -305,6 +348,13 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 	go func() {
 		defer close(results)
+		var cancel context.CancelFunc
+		if a.dur > 0 {
+			ctx, cancel = context.WithTimeout(ctx, a.dur)
+		} else {
+			ctx, cancel = context.WithCancel(ctx)
+		}
+		defer cancel()
 
 		var wg sync.WaitGroup
 		fmt.Println("[StatefulAttacker] Starting stateful execution...")
@@ -429,40 +479,45 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 		attackStart := time.Now()
 
 		tokens := make(chan struct{}, int(a.maxW)*2) // Add buffer: prevent producer goroutine from blocking
-		go func() {
-			var hits uint64
-			for {
-				if ctx.Err() != nil {
-					close(tokens)
-					return
-				}
-				elapsed := time.Since(attackStart)
-				if a.dur > 0 && elapsed >= a.dur {
-					close(tokens)
-					return
-				}
-				wait, stop := a.pacer.Pace(elapsed, hits)
-				if stop {
-					close(tokens)
-					return
-				}
-				if wait > 5*time.Millisecond {
-					time.Sleep(wait)
-				} else if wait > 0 {
-					target := time.Now().Add(wait)
-					for time.Now().Before(target) {
-						// spin-wait for precise pacing
+
+		if a.workerPacer == nil {
+			// Only start the token-producer goroutine when using open-model pacer.
+			// When workerPacer is set (closed-model), workers self-pace and tokens are unused.
+			go func() {
+				var hits uint64
+				for {
+					if ctx.Err() != nil {
+						close(tokens)
+						return
+					}
+					elapsed := time.Since(attackStart)
+					if a.dur > 0 && elapsed >= a.dur {
+						close(tokens)
+						return
+					}
+					wait, stop := a.pacer.Pace(elapsed, hits)
+					if stop {
+						close(tokens)
+						return
+					}
+					if wait > 5*time.Millisecond {
+						time.Sleep(wait)
+					} else if wait > 0 {
+						target := time.Now().Add(wait)
+						for time.Now().Before(target) {
+							// spin-wait for precise pacing
+						}
+					}
+					select {
+					case tokens <- struct{}{}:
+						hits++
+					case <-ctx.Done():
+						close(tokens)
+						return
 					}
 				}
-				select {
-				case tokens <- struct{}{}:
-					hits++
-				case <-ctx.Done():
-					close(tokens)
-					return
-				}
-			}
-		}()
+			}()
+		}
 
 		for i := uint64(0); i < a.maxW; i++ {
 			wg.Add(1)
@@ -573,8 +628,9 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					return jar
 				}
 
+				wsTransport := NewWSRoundTripper(a.transport)
 				sessionClient := &http.Client{
-					Transport: &WSRoundTripper{Fallback: a.transport},
+					Transport: wsTransport,
 					Timeout:   30 * time.Second,
 					Jar:       createCookieJar(),
 				}
@@ -584,17 +640,32 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				allRVs = append(allRVs, sharedRandomVariables...)
 				allRVs = append(allRVs, localRandomVariables...)
 
-				// Ensure any held locks are released when worker exits
+				// Ensure any held locks and WebSocket connections are released when worker exits
 				defer func() {
+					wsTransport.CloseAll()
 					for name, mu := range session.HeldLocks {
 						mu.Unlock()
 						delete(session.HeldLocks, name)
 					}
 				}()
+				tgLoops := 0
+				tgContinueForever := true
+				if len(plan.ThreadGroups) > 0 {
+					tgLoops = plan.ThreadGroups[0].Loops
+					tgContinueForever = plan.ThreadGroups[0].ContinueForever
+				}
+				iterCount := 0
 
 				for {
 					if ctx.Err() != nil {
 						return
+					}
+
+					if !tgContinueForever && tgLoops > 0 {
+						if iterCount >= tgLoops {
+							return
+						}
+						iterCount++
 					}
 
 					if cookieManager != nil && cookieManager.ClearEachIteration {
@@ -681,13 +752,27 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						return
 					}
 
-					select {
-					case _, ok := <-tokens:
-						if !ok {
+					if a.workerPacer != nil {
+						wait, stop := a.workerPacer(sessionID, time.Since(attackStart))
+						if stop {
 							return
 						}
-					case <-ctx.Done():
-						return
+						if wait > 0 {
+							select {
+							case <-time.After(wait):
+							case <-ctx.Done():
+								return
+							}
+						}
+					} else {
+						select {
+						case _, ok := <-tokens:
+							if !ok {
+								return
+							}
+						case <-ctx.Done():
+							return
+						}
 					}
 
 					// Execute samplers sequentially
@@ -709,6 +794,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							step = jump
 						}
 						sampler := session.Tg.Samplers[step]
+						session.Evaluator.SetSamplerName(sampler.Name)
 
 						if sampler.IsControlFlow {
 							switch sampler.ControlType {
@@ -731,7 +817,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 										if count > 1 {
 											session.LoopCounters[sampler.LoopId] = count - 1
 										}
-										step = sampler.LoopJumpIndex // jump back to first item inside loop
+										// Subtract 1 to compensate for the step++ in the loop (consistent with WhileEnd/ForEachEnd)
+										step = sampler.LoopJumpIndex - 1
 									} else {
 										delete(session.LoopCounters, sampler.LoopId) // loop done
 									}
@@ -1055,7 +1142,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								sleepMs = delayMs + poissonDelay(rangeMs)
 							case "SyncTimer":
 								if barrier, ok := syncBarriers[timer]; ok {
-									barrier.Wait()
+									barrier.Wait(ctx)
 								}
 							}
 							if sleepMs > 0 {
@@ -1066,12 +1153,40 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							time.Sleep(totalDelay)
 						}
 
-						EvaluatePreProcessors(session, sampler)
-
-						// Evaluate variables in URL
-						url := session.Evaluator.Evaluate(sampler.Request.URL)
+						// Evaluate variables in URL; EvaluatePreProcessors may return a modified URL
+						// (prevents data race by not mutating the shared sampler.Request.URL directly)
+						preProcessedURL := EvaluatePreProcessors(session, sampler)
+						var reqURL string
+						if preProcessedURL != "" {
+							reqURL = preProcessedURL
+						} else {
+							reqURL = session.Evaluator.Evaluate(sampler.Request.URL)
+						}
 						method := sampler.Request.Method
 						bodyStr := session.Evaluator.Evaluate(sampler.Request.BodyTemplate)
+
+						if len(sampler.Request.Arguments) > 0 {
+							var args []string
+							for _, arg := range sampler.Request.Arguments {
+								k := url.QueryEscape(session.Evaluator.Evaluate(arg[0]))
+								v := url.QueryEscape(session.Evaluator.Evaluate(arg[1]))
+								args = append(args, k+"="+v)
+							}
+							qs := strings.Join(args, "&")
+							if method == "GET" || method == "DELETE" {
+								if strings.Contains(reqURL, "?") {
+									reqURL += "&" + qs
+								} else {
+									reqURL += "?" + qs
+								}
+							} else {
+								if bodyStr != "" {
+									bodyStr += "&" + qs
+								} else {
+									bodyStr = qs
+								}
+							}
+						}
 
 						var bodyReader io.Reader
 						if bodyStr != "" {
@@ -1088,10 +1203,25 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							}
 						}
 
-						req, err := http.NewRequestWithContext(reqCtx, method, url, bodyReader)
+						req, err := http.NewRequestWithContext(reqCtx, method, reqURL, bodyReader)
 						if err != nil {
 							if cancel != nil {
 								cancel()
+							}
+							// Record a failure result so it appears in the report instead of silently skipping
+							failRes := &vegeta.Result{
+								Attack:    sampler.Name,
+								Seq:       uint64(step),
+								Timestamp: time.Now(),
+								Latency:   0,
+								Method:    method,
+								URL:       reqURL,
+								Error:     fmt.Sprintf("invalid request: %v", err),
+							}
+							select {
+							case results <- failRes:
+							case <-ctx.Done():
+								return
 							}
 							continue
 						}
@@ -1102,7 +1232,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						}
 
 						if cacheManager != nil {
-							if entry, ok := session.Cache[url]; ok {
+							if entry, ok := session.Cache[reqURL]; ok {
 								if entry.ETag != "" {
 									req.Header.Set("If-None-Match", entry.ETag)
 								}
@@ -1115,7 +1245,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						if authManager != nil {
 							for _, auth := range authManager.AuthList {
 								authUrl := session.Evaluator.Evaluate(auth.URL)
-								if strings.HasPrefix(url, authUrl) {
+								if strings.HasPrefix(reqURL, authUrl) {
 									user := session.Evaluator.Evaluate(auth.Username)
 									pass := session.Evaluator.Evaluate(auth.Password)
 									mech := session.Evaluator.Evaluate(auth.Mechanism)
@@ -1147,7 +1277,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							Timestamp: start,
 							Latency:   elapsed,
 							Method:    method,
-							URL:       url,
+							URL:       reqURL,
 						}
 
 						var bodyBytes []byte
@@ -1162,7 +1292,23 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								// Direct use of bytes.Buffer: optimized from 2 copies via strings.Builder to 0 copies
 								var bb bytes.Buffer
 								bb.Grow(4096)
-								written, _ := io.CopyBuffer(&bb, resp.Body, buf)
+								// Scale max body size based on worker count to prevent OOM (MEDIUM-23)
+								var maxBodySize int64 = 5 * 1024 * 1024 // 5MB default
+								if a.maxW >= 1000 {
+									maxBodySize = 2 * 1024 * 1024
+								}
+								if a.maxW >= 500 {
+									maxBodySize = 512 * 1024
+								}
+								if !a.needsBody {
+									maxBodySize = 0
+								}
+
+								written, _ := io.CopyBuffer(&bb, io.LimitReader(resp.Body, maxBodySize), buf)
+								if written == maxBodySize {
+									rest, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
+									written += rest
+								}
 								bodyBytes = bb.Bytes()
 								res.BytesIn = uint64(written)
 							} else {
@@ -1180,7 +1326,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								lastMod := resp.Header.Get("Last-Modified")
 								if etag != "" || lastMod != "" {
 									if len(session.Cache) < cacheManager.MaxSize {
-										session.Cache[url] = &CacheEntry{
+										session.Cache[reqURL] = &CacheEntry{
 											ETag:         etag,
 											LastModified: lastMod,
 										}
@@ -1215,7 +1361,15 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 								val, extractOk := ext.Extract(bodyBytes)
 								if !extractOk {
-									val = ext.DefaultValue()
+									defVal, hasDef := ext.DefaultValue()
+									if hasDef {
+										val = defVal
+									} else {
+										// JMeter removes variable if no default is provided
+										delete(session.Variables, ext.RefName())
+										session.Evaluator.SetVariable(ext.RefName(), "")
+										continue
+									}
 								}
 								session.Variables[ext.RefName()] = val
 								session.Evaluator.SetVariable(ext.RefName(), val)
@@ -1223,7 +1377,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 							// Execute assertions
 							for _, ast := range sampler.Assertions {
-								if err := evaluateAssertion(ast, resp, bodyBytes, session); err != nil {
+								if err := evaluateAssertion(ast, resp, bodyBytes, session, elapsed); err != nil {
 									res.Error = err.Error()
 									break // fail fast on first assertion error
 								}
@@ -1273,7 +1427,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 	return results
 }
 
-func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []byte, session *Session) error {
+func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []byte, session *Session, latency time.Duration) error {
 	switch a := ast.(type) {
 	case *domain.ResponseAssertion:
 		var target string
@@ -1503,15 +1657,23 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 		return nil
 
 	case *domain.DurationAssertion:
-		// duration is not passed to evaluateAssertion currently.
-		// We pass for now until the engine is upgraded to pass sample latency.
+		allowedDurationMs := int64(a.Duration)
+		if allowedDurationMs <= 0 {
+			return nil // Skip if not configured
+		}
+		if latency > time.Duration(allowedDurationMs)*time.Millisecond {
+			return fmt.Errorf("DurationAssertion failed: response took %dms, exceeded allowed %dms",
+				latency.Milliseconds(), allowedDurationMs)
+		}
 		return nil
 
 	case *domain.MD5HexAssertion:
 		hash := md5.Sum(bodyBytes)
 		actualHex := hex.EncodeToString(hash[:])
-		if !strings.EqualFold(actualHex, a.ExpectedMD5Hex) {
-			return fmt.Errorf("MD5HexAssertion failed: expected '%s', got '%s'", a.ExpectedMD5Hex, actualHex)
+		// Evaluate variables in ExpectedMD5Hex (supports ${var} references)
+		expectedHex := session.Evaluator.Evaluate(a.ExpectedMD5Hex)
+		if !strings.EqualFold(actualHex, expectedHex) {
+			return fmt.Errorf("MD5HexAssertion failed: expected '%s', got '%s'", expectedHex, actualHex)
 		}
 		return nil
 
@@ -1543,8 +1705,10 @@ func evaluateAssertion(ast domain.Assertion, resp *http.Response, bodyBytes []by
 }
 
 // EvaluatePreProcessors evaluates the preprocessors for a given sampler.
+// Returns the modified URL if any preprocessor changes it; returns empty string if no modification.
 // Exported for testing purposes.
-func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) {
+func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) string {
+	modifiedURL := ""
 	for _, preProc := range sampler.PreProcessors {
 		switch p := preProc.(type) {
 		case *domain.HTMLLinkParser:
@@ -1556,7 +1720,7 @@ func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) {
 						for _, m := range matches {
 							link := string(m[1])
 							if rx.MatchString(link) {
-								sampler.Request.URL = link
+								modifiedURL = link // Return instead of mutating shared sampler
 								break
 							}
 						}
@@ -1589,7 +1753,7 @@ func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) {
 								}
 								evalUrl += sep + p.ArgumentName + "=" + val
 							}
-							sampler.Request.URL = evalUrl
+							modifiedURL = evalUrl // Return instead of mutating shared sampler
 						}
 					}
 				}
@@ -1617,14 +1781,13 @@ func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) {
 							if strings.Contains(evalUrl, "?") {
 								sep = "&"
 							}
-							// In JMeter, HTTP Request arguments can also be in the body for POST requests.
-							// For simplicity, we append to the URL query string here.
 							evalUrl += sep + url.QueryEscape(name) + "=" + url.QueryEscape(val)
 						}
 					}
-					sampler.Request.URL = evalUrl
+					modifiedURL = evalUrl // Return instead of mutating shared sampler
 				}
 			}
 		}
 	}
+	return modifiedURL
 }

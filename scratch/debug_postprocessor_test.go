@@ -53,8 +53,9 @@ func TestDebugPostProcessorParse(t *testing.T) {
 	if ext.RefName() != "__DEBUG__" {
 		t.Errorf("Expected RefName '__DEBUG__', got '%s'", ext.RefName())
 	}
-	if ext.DefaultValue() != "" {
-		t.Errorf("Expected DefaultValue '', got '%s'", ext.DefaultValue())
+	v, _ := ext.DefaultValue()
+	if v != "" {
+		t.Errorf("Expected empty string, got '%s'", v)
 	}
 
 	val, ok := ext.Extract([]byte("body"))

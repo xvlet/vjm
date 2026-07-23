@@ -5,9 +5,11 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/csv"
 	"encoding/hex"
 	"fmt"
 	"html"
+	"log"
 	"math/rand/v2"
 	"net/url"
 	"os"
@@ -62,22 +64,49 @@ func init() {
 		"__changeCase":      evalChangecase,
 		"__char":            evalChar,
 		"__XPath":           evalXpath,
+		"__threadNum":       evalThreadNum,
+		"__samplerName":     evalSamplerName,
+		"__StringFromFile":  evalStringFromFile,
+		"__regexFunction":   evalRegexFunction,
 	}
+}
+
+func evalThreadNum(e *DefaultEvaluator, args []string) string {
+	return strconv.Itoa(e.threadNum)
+}
+
+func evalSamplerName(e *DefaultEvaluator, args []string) string {
+	if e.samplerName == "" {
+		return ""
+	}
+	if len(args) > 0 && args[0] != "" {
+		e.variables[args[0]] = e.samplerName
+	}
+	return e.samplerName
 }
 
 func evalTime(e *DefaultEvaluator, args []string) string {
 	// JMeter spec: no args → Unix epoch milliseconds
+	var result string
 	if len(args) == 0 || args[0] == "" {
-		return strconv.FormatInt(time.Now().UnixMilli(), 10)
+		result = strconv.FormatInt(time.Now().UnixMilli(), 10)
+	} else {
+		format := mapJavaTimeToGo(args[0])
+		result = time.Now().Format(format)
 	}
-	format := mapJavaTimeToGo(args[0])
-	return time.Now().Format(format)
+	// JMeter spec: if varName (args[1]) is provided, store the result in that variable
+	if len(args) > 1 && args[1] != "" {
+		e.variables[args[1]] = result
+	}
+	return result
 }
 
 func evalScript(e *DefaultEvaluator, args []string) string {
 	if len(args) == 0 {
 		return ""
 	}
+	// MEDIUM-28: Add a warning since expr-lang does not fully support Groovy/JS syntax.
+	log.Printf("[WARNING] __jexl3/__groovy/__javaScript are backed by expr-lang/expr; full Groovy/JS syntax is NOT supported. Only basic arithmetic/comparison expressions work.")
 	// The first argument is the expression, evaluate inner variables first
 	exprStr := e.Evaluate(args[0])
 	res, err := expr.Eval(exprStr, nil)
@@ -90,7 +119,7 @@ func evalScript(e *DefaultEvaluator, args []string) string {
 func evalRandomstring(e *DefaultEvaluator, args []string) string {
 	length := 10
 	if len(args) > 0 && args[0] != "" {
-		if l, err := strconv.Atoi(args[0]); err == nil {
+		if l, err := strconv.Atoi(args[0]); err == nil && l > 0 && l <= 10000 {
 			length = l
 		}
 	}
@@ -98,7 +127,12 @@ func evalRandomstring(e *DefaultEvaluator, args []string) string {
 	if len(args) > 1 && args[1] != "" {
 		chars = args[1]
 	}
-	return randomString(length, chars)
+	result := randomString(length, chars)
+	// JMeter spec: if varName (args[2]) is provided, store the result in that variable
+	if len(args) > 2 && args[2] != "" {
+		e.variables[args[2]] = result
+	}
+	return result
 }
 
 func evalP(e *DefaultEvaluator, args []string) string {
@@ -489,9 +523,14 @@ func evalSetproperty(e *DefaultEvaluator, args []string) string {
 	}
 	propName := args[0]
 	propVal := args[1]
+	// Capture original value before overwriting (JMeter spec: return original when 3rd arg is true)
+	var originalVal string
+	if oldVal, ok := e.shared.properties.Load(propName); ok {
+		originalVal = oldVal.(string)
+	}
 	e.shared.properties.Store(propName, propVal)
 	if len(args) > 2 && strings.ToLower(args[2]) == "true" {
-		return propVal
+		return originalVal // Return original value per JMeter spec
 	}
 	return ""
 }
@@ -532,23 +571,23 @@ func evalCsvread(e *DefaultEvaluator, args []string) string {
 	if val, ok := e.shared.csvCache.Load(fileName); ok {
 		csvState = val.(*CSVSharedState)
 	} else {
-		content, err := os.ReadFile(fileName)
-		if err != nil {
-			return ""
-		}
-		var lines [][]string
-		for _, line := range strings.Split(string(content), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				lines = append(lines, strings.Split(line, ","))
-			}
-		}
-		csvState = &CSVSharedState{
-			lines: lines,
-		}
-		actual, _ := e.shared.csvCache.LoadOrStore(fileName, csvState)
+		actual, _ := e.shared.csvCache.LoadOrStore(fileName, &CSVSharedState{})
 		csvState = actual.(*CSVSharedState)
 	}
+
+	csvState.once.Do(func() {
+		f, err := os.Open(fileName)
+		if err != nil {
+			return
+		}
+		defer func() { _ = f.Close() }()
+		r := csv.NewReader(f)
+		r.LazyQuotes = true
+		lines, err := r.ReadAll()
+		if err == nil {
+			csvState.lines = lines
+		}
+	})
 
 	if len(csvState.lines) == 0 {
 		return ""
@@ -642,20 +681,80 @@ func evalXpath(e *DefaultEvaluator, args []string) string {
 	fileName := args[0]
 	xpathExpr := args[1]
 
-	f, err := os.Open(fileName)
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = f.Close() }()
-
-	doc, err := xmlquery.Parse(f)
-	if err != nil {
-		return ""
+	var xpathState *XPathSharedState
+	if val, ok := e.shared.xpathCache.Load(fileName); ok {
+		xpathState = val.(*XPathSharedState)
+	} else {
+		actual, _ := e.shared.xpathCache.LoadOrStore(fileName, &XPathSharedState{})
+		xpathState = actual.(*XPathSharedState)
 	}
 
-	node, err := xmlquery.Query(doc, xpathExpr)
+	xpathState.once.Do(func() {
+		f, err := os.Open(fileName)
+		if err != nil {
+			return
+		}
+		defer func() { _ = f.Close() }()
+		doc, err := xmlquery.Parse(f)
+		if err == nil {
+			xpathState.doc = doc
+		}
+	})
+
+	if xpathState.doc == nil {
+		return ""
+	}
+
+	node, err := xmlquery.Query(xpathState.doc, xpathExpr)
 	if err != nil || node == nil {
 		return ""
 	}
 	return node.InnerText()
+}
+
+func evalStringFromFile(e *DefaultEvaluator, args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	fileName := args[0]
+	varName := ""
+	if len(args) > 1 {
+		varName = args[1]
+	}
+
+	val, _ := e.shared.stringFromFileCache.LoadOrStore(fileName, &StringFromFileState{})
+	state := val.(*StringFromFileState)
+
+	state.once.Do(func() {
+		b, err := os.ReadFile(fileName)
+		if err == nil {
+			lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+			// Remove last empty line if ends with newline
+			if len(lines) > 0 && lines[len(lines)-1] == "" {
+				lines = lines[:len(lines)-1]
+			}
+			state.lines = lines
+		}
+	})
+
+	if len(state.lines) == 0 {
+		return ""
+	}
+
+	idx := atomic.AddInt64(&state.nextRow, 1) - 1
+	line := state.lines[idx%int64(len(state.lines))]
+
+	if varName != "" {
+		e.variables[varName] = line
+	}
+	return line
+}
+
+func evalRegexFunction(e *DefaultEvaluator, args []string) string {
+	// Not fully supported in VJM as we don't hold the previous sampler's response body in memory for functions.
+	// Only returning the default value if provided.
+	if len(args) >= 4 {
+		return args[3]
+	}
+	return ""
 }

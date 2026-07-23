@@ -343,6 +343,10 @@ testdata=test
 | `${__changeCase(str,mode,var)}` | 대소문자 변환 (UPPER/LOWER/CAPITALIZE) | `${__changeCase(hello,UPPER)}` |
 | `${__char(num...)}` | 숫자로부터 유니코드 문자 생성 | `${__char(0x41)}` |
 | `${__XPath(file,expr)}` | 파일에서 XPath 표현식으로 값 추출 | `${__XPath(data.xml,//node)}` |
+| `${__threadNum()}` | 현재 가상 유저(스레드) 번호 반환 (1 기반) | `${__threadNum()}` |
+| `${__samplerName(var)}` | 현재 실행 중인 샘플러 이름 반환; 변수에 저장 가능 | `${__samplerName(SNAME)}` |
+| `${__StringFromFile(file,var)}` | 파일에서 줄을 순차적으로 읽음 (라운드로빈, 스레드 안전) | `${__StringFromFile(data.txt,LINE)}` |
+| `${__regexFunction(...)}` | 정규식 추출 (vjm에서는 기본값 반환; 대신 Regex Extractor 권장) | `${__regexFunction(regex,tmpl,match,def)}` |
 | `${varName}` | 변수 참조 | `${target.host}` |
 
 ---
@@ -476,7 +480,7 @@ no -p -o tcp_ephemeral_low=10241  # 임시 포트 범위 확장
 - [x] **View Results Tree** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Summary Report** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Aggregate Report** (GUI 렌더링 제외, 파일 출력 전용)
-- [x] **Backend Listener** (파싱 완료, 외부 DB 연동은 추후 확장)
+- [x] **Backend Listener** (InfluxDB Line Protocol v1/v2 전송 구현; 5초 간격 푸시)
 - [x] **Aggregate Graph** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Assertion Results** (GUI 렌더링 제외, 파일 출력 전용)
 - [x] **Comparison Assertion Visualizer** (GUI 렌더링 제외, 파일 출력 전용)
