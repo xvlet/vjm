@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -47,11 +48,20 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 	var currentReq *domain.RequestTemplate
 	var domainVal, portVal, pathVal, protocolVal string
 	var defDomain, defPort, defPath, defProtocol string
+	var graphQLQuery, graphQLVariables, graphQLOperationName string
+	var currentLogFile string
+	var currentTestAction *domain.Sampler
+	var currentDebugSampler *domain.Sampler
 
 	var inUserParameters bool
 	var userParamState string
 	var userParamNames []string
 	var userParamValues []string
+
+	var inSystemSamplerArguments bool
+	var inSystemSamplerEnvironment bool
+	var inResultCollectorObjPropValue bool
+
 	// inMainControllerElementProp tracks when we're inside <elementProp name="ThreadGroup.main_controller">.
 	// LoopController.loops inside this elementProp sets the ThreadGroup loop count, not a new LoopController.
 	var inMainControllerElementProp bool
@@ -247,7 +257,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					enabledAttr = attr.Value
 				}
 			}
-			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController" || currentTag == "TestFragmentController" || currentTag == "TestPlan") {
+			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || currentTag == "GraphQLHTTPSamplerProxy" || currentTag == "TestAction" || currentTag == "DebugSampler" || currentTag == "AccessLogSampler" || currentTag == "SystemSampler" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController" || currentTag == "TestFragmentController" || currentTag == "TestPlan") {
 				nameAttr = testNameAttr
 			}
 
@@ -579,7 +589,150 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				lastCompletedReq = nil
-			} else if currentTag == "HTTPSamplerProxy" || strings.Contains(currentTag, "WebSocketSampler") {
+			} else if currentTag == "DebugSampler" {
+				activeIfCondition := ""
+				var conditions []string
+				for d := 1; d <= hashTreeDepth; d++ {
+					if cond, ok := ifConditionMap[d]; ok && cond != "" {
+						conditions = append(conditions, cond)
+					}
+				}
+				if len(conditions) > 0 {
+					activeIfCondition = strings.Join(conditions, " && ")
+				}
+
+				activeTransactionName := ""
+				activeTransactionParent := false
+				for d := 1; d <= hashTreeDepth; d++ {
+					if name, ok := transactionNameMap[d]; ok && name != "" {
+						activeTransactionName = name
+						activeTransactionParent = transactionParentMap[d]
+					}
+				}
+
+				currentDebugSampler = &domain.Sampler{
+					Name:              nameAttr,
+					IsControlFlow:     true,
+					ControlType:       "DebugSampler",
+					Weight:            activeWeight,
+					IfCondition:       activeIfCondition,
+					TransactionName:   activeTransactionName,
+					TransactionParent: activeTransactionParent,
+				}
+				if currentThreadGroup != nil {
+					appendSamplers(currentDebugSampler)
+				}
+			} else if currentTag == "AccessLogSampler" {
+				activeIfCondition := ""
+				var conditions []string
+				for d := 1; d <= hashTreeDepth; d++ {
+					if cond, ok := ifConditionMap[d]; ok && cond != "" {
+						conditions = append(conditions, cond)
+					}
+				}
+				if len(conditions) > 0 {
+					activeIfCondition = strings.Join(conditions, " && ")
+				}
+
+				activeTransactionName := ""
+				activeTransactionParent := false
+				for d := 1; d <= hashTreeDepth; d++ {
+					if name, ok := transactionNameMap[d]; ok && name != "" {
+						activeTransactionName = name
+						activeTransactionParent = transactionParentMap[d]
+					}
+				}
+
+				currentReq = &domain.RequestTemplate{
+					Headers: make(map[string]string),
+				}
+				sampler := &domain.Sampler{
+					Name:               nameAttr,
+					Request:            currentReq,
+					Weight:             activeWeight,
+					IfCondition:        activeIfCondition,
+					TransactionName:    activeTransactionName,
+					TransactionParent:  activeTransactionParent,
+					IsAccessLogSampler: true,
+				}
+				if currentThreadGroup != nil {
+					appendSamplers(sampler)
+				}
+				// Reset sampler-specific URL parts
+				domainVal, portVal, pathVal, protocolVal, currentLogFile = "", "", "", "", ""
+				currentHeaderName = ""
+				postBodyRaw = false
+			} else if currentTag == "SystemSampler" {
+				activeIfCondition := ""
+				var conditions []string
+				for d := 1; d <= hashTreeDepth; d++ {
+					if cond, ok := ifConditionMap[d]; ok && cond != "" {
+						conditions = append(conditions, cond)
+					}
+				}
+				if len(conditions) > 0 {
+					activeIfCondition = strings.Join(conditions, " && ")
+				}
+
+				activeTransactionName := ""
+				activeTransactionParent := false
+				for d := 1; d <= hashTreeDepth; d++ {
+					if name, ok := transactionNameMap[d]; ok && name != "" {
+						activeTransactionName = name
+						activeTransactionParent = transactionParentMap[d]
+					}
+				}
+
+				currentReq = &domain.RequestTemplate{
+					Headers: make(map[string]string),
+				}
+				sampler := &domain.Sampler{
+					Name:               nameAttr,
+					Request:            currentReq,
+					Weight:             activeWeight,
+					IfCondition:        activeIfCondition,
+					TransactionName:    activeTransactionName,
+					TransactionParent:  activeTransactionParent,
+					IsOSProcessSampler: true,
+					OSEnvironment:      make(map[string]string),
+				}
+				if currentThreadGroup != nil {
+					appendSamplers(sampler)
+				}
+			} else if currentTag == "TestAction" {
+				activeIfCondition := ""
+				var conditions []string
+				for d := 1; d <= hashTreeDepth; d++ {
+					if cond, ok := ifConditionMap[d]; ok && cond != "" {
+						conditions = append(conditions, cond)
+					}
+				}
+				if len(conditions) > 0 {
+					activeIfCondition = strings.Join(conditions, " && ")
+				}
+
+				activeTransactionName := ""
+				activeTransactionParent := false
+				for d := 1; d <= hashTreeDepth; d++ {
+					if name, ok := transactionNameMap[d]; ok && name != "" {
+						activeTransactionName = name
+						activeTransactionParent = transactionParentMap[d]
+					}
+				}
+
+				currentTestAction = &domain.Sampler{
+					Name:              nameAttr,
+					IsControlFlow:     true,
+					ControlType:       "TestAction",
+					Weight:            activeWeight,
+					IfCondition:       activeIfCondition,
+					TransactionName:   activeTransactionName,
+					TransactionParent: activeTransactionParent,
+				}
+				if currentThreadGroup != nil {
+					appendSamplers(currentTestAction)
+				}
+			} else if currentTag == "HTTPSamplerProxy" || currentTag == "GraphQLHTTPSamplerProxy" || strings.Contains(currentTag, "WebSocketSampler") {
 				activeIfCondition := ""
 				var conditions []string
 				for d := 1; d <= hashTreeDepth; d++ {
@@ -614,7 +767,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					})
 				}
 				// Reset sampler-specific URL parts
-				domainVal, portVal, pathVal, protocolVal = "", "", "", ""
+				domainVal, portVal, pathVal, protocolVal, currentLogFile = "", "", "", "", ""
 				currentHeaderName = ""
 				postBodyRaw = false
 			} else if currentTag == "HeaderManager" {
@@ -846,6 +999,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						plan.ResultCollectors = append(plan.ResultCollectors, currentResultCollector)
 					}
 				}
+			} else if currentTag == "value" && currentResultCollector != nil {
+				for _, attr := range se.Attr {
+					if attr.Name.Local == "class" && attr.Value == "SampleSaveConfiguration" {
+						inResultCollectorObjPropValue = true
+					}
+				}
 			} else if currentTag == "ResultSaver" {
 				if enabledAttr != "false" {
 					currentResultSaver = &domain.ResultSaver{
@@ -968,6 +1127,10 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				// HIGH-14: This elementProp wraps the ThreadGroup's built-in LoopController.
 				// LoopController.loops inside this element sets ThreadGroup.Loops directly.
 				inMainControllerElementProp = true
+			} else if currentTag == "elementProp" && nameAttr == "SystemSampler.arguments" {
+				inSystemSamplerArguments = true
+			} else if currentTag == "elementProp" && nameAttr == "SystemSampler.environment" {
+				inSystemSamplerEnvironment = true
 			} else if currentTag == "elementProp" {
 				var isArg bool
 				for _, attr := range se.Attr {
@@ -1433,6 +1596,8 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentRandomVariable = nil
 			} else if se.Name.Local == "ResultCollector" || se.Name.Local == "MailerResultCollector" {
 				currentResultCollector = nil
+			} else if se.Name.Local == "value" && inResultCollectorObjPropValue {
+				inResultCollectorObjPropValue = false
 			} else if se.Name.Local == "ResultSaver" {
 				currentResultSaver = nil
 			} else if se.Name.Local == "BackendListener" {
@@ -1453,6 +1618,20 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if currentReq == nil && currentArgName != "" {
 					// Global User Defined Variable
 					plan.UserDefinedVariables[currentArgName] = currentArgValue
+				} else if inSystemSamplerArguments {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						if lastS.IsOSProcessSampler {
+							lastS.OSArguments = append(lastS.OSArguments, currentArgValue)
+						}
+					}
+				} else if inSystemSamplerEnvironment && currentArgName != "" {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						if lastS.IsOSProcessSampler && lastS.OSEnvironment != nil {
+							lastS.OSEnvironment[currentArgName] = currentArgValue
+						}
+					}
 				} else if currentReq != nil {
 					// If postBodyRaw, only use it as BodyTemplate if it's the first one without a name
 					if postBodyRaw && currentReq.BodyTemplate == "" && currentArgName == "" {
@@ -1469,9 +1648,58 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				isArgumentProp = false
 				currentArgName = ""
 				currentArgValue = ""
+			} else if se.Name.Local == "elementProp" && inSystemSamplerArguments {
+				inSystemSamplerArguments = false
+			} else if se.Name.Local == "elementProp" && inSystemSamplerEnvironment {
+				inSystemSamplerEnvironment = false
+			} else if se.Name.Local == "AccessLogSampler" && currentReq != nil {
+				// Store AccessLog properties into the current sampler (Wait, properties were parsed into global vars,
+				// we'll map them using the same URL builder logic for domain/port)
+				pcol := protocolVal
+				if pcol == "" {
+					pcol = defProtocol
+				}
+				if pcol == "" {
+					pcol = "http"
+				}
+
+				dom := domainVal
+				if dom == "" {
+					dom = defDomain
+				}
+
+				prt := portVal
+				if prt == "" {
+					prt = defPort
+				}
+
+				urlStr := pcol + "://" + dom
+				if prt != "" {
+					urlStr += ":" + prt
+				}
+				currentReq.URL = urlStr
+
+				if len(currentThreadGroup.Samplers) > 0 {
+					lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+					lastS.AccessLogDomain = dom
+					lastS.AccessLogPort = prt
+					lastS.AccessLogFile = currentLogFile
+				}
+
+				lastCompletedReq = currentReq
+				currentReq = nil
+				expectingSamplerChildTree = true
+			} else if se.Name.Local == "SystemSampler" && currentReq != nil {
+				lastCompletedReq = currentReq
+				currentReq = nil
+				expectingSamplerChildTree = true
+			} else if se.Name.Local == "DebugSampler" {
+				currentDebugSampler = nil
+			} else if se.Name.Local == "TestAction" {
+				currentTestAction = nil
 			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
 				currentTimer = nil
-			} else if (se.Name.Local == "HTTPSamplerProxy" || strings.Contains(se.Name.Local, "WebSocketSampler")) && currentReq != nil {
+			} else if (se.Name.Local == "HTTPSamplerProxy" || se.Name.Local == "GraphQLHTTPSamplerProxy" || strings.Contains(se.Name.Local, "WebSocketSampler")) && currentReq != nil {
 				// Build the URL now. Keep currentReq alive so the following
 				// HeaderManager (inside sibling hashTree) can still attach headers.
 				pcol := protocolVal
@@ -1503,6 +1731,29 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				urlStr += pth
 				currentReq.URL = urlStr
+
+				if se.Name.Local == "GraphQLHTTPSamplerProxy" {
+					bodyMap := map[string]interface{}{
+						"query": graphQLQuery,
+					}
+					if graphQLVariables != "" {
+						var varsMap map[string]interface{}
+						if err := json.Unmarshal([]byte(graphQLVariables), &varsMap); err == nil {
+							bodyMap["variables"] = varsMap
+						} else {
+							bodyMap["variables"] = graphQLVariables
+						}
+					}
+					if graphQLOperationName != "" {
+						bodyMap["operationName"] = graphQLOperationName
+					}
+					if b, err := json.Marshal(bodyMap); err == nil {
+						currentReq.BodyTemplate = string(b)
+					}
+					graphQLQuery = ""
+					graphQLVariables = ""
+					graphQLOperationName = ""
+				}
 
 				// Move to lastCompletedReq so HeaderManager can still find it,
 				// but clear currentReq so subsequent Argument.value parsing doesn't pollute it.
@@ -1559,6 +1810,13 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				continue
 			}
 
+			if inResultCollectorObjPropValue && currentResultCollector != nil {
+				if currentResultCollector.Configuration == nil {
+					currentResultCollector.Configuration = make(map[string]bool)
+				}
+				currentResultCollector.Configuration[currentTag] = (val == "true")
+			}
+
 			if inDNSServers {
 				if currentDNSCacheManager != nil {
 					currentDNSCacheManager.Servers = append(currentDNSCacheManager.Servers, val)
@@ -1589,6 +1847,24 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "boolProp":
+				if currentDebugSampler != nil {
+					switch nameAttr {
+					case "displayJMeterVariables":
+						currentDebugSampler.DebugJMeterVariables = (val == "true")
+					case "displayJMeterProperties":
+						currentDebugSampler.DebugJMeterProperties = (val == "true")
+					case "displaySystemProperties":
+						currentDebugSampler.DebugSystemProperties = (val == "true")
+					}
+				}
+				if nameAttr == "SystemSampler.checkReturnCode" {
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						if lastS.IsOSProcessSampler {
+							lastS.OSCheckReturnCode = (val == "true")
+						}
+					}
+				}
 				if nameAttr == "ThroughputController.perThread" {
 					pendingThroughputPerThread = (val == "true")
 				}
@@ -1739,6 +2015,18 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "intProp":
+				if currentTestAction != nil {
+					switch nameAttr {
+					case "ActionProcessor.action":
+						if v, err := strconv.Atoi(val); err == nil {
+							currentTestAction.TestActionAction = v
+						}
+					case "ActionProcessor.target":
+						if v, err := strconv.Atoi(val); err == nil {
+							currentTestAction.TestActionTarget = v
+						}
+					}
+				}
 				if nameAttr == "ThroughputController.style" {
 					if v, err := strconv.Atoi(val); err == nil {
 						pendingThroughputStyle = v
@@ -1824,6 +2112,11 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "stringProp":
+				if currentTestAction != nil {
+					if nameAttr == "ActionProcessor.duration" {
+						currentTestAction.TestActionDuration = val
+					}
+				}
 				if inUltimateRow {
 					ultimateRowVals = append(ultimateRowVals, val)
 					continue
@@ -1931,24 +2224,59 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					} else {
 						protocolVal = val
 					}
+				case "SystemSampler.command":
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						if lastS.IsOSProcessSampler {
+							lastS.OSCommand = val
+						}
+					}
+				case "SystemSampler.directory":
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						if lastS.IsOSProcessSampler {
+							lastS.OSDirectory = val
+						}
+					}
+				case "SystemSampler.timeout":
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						if lastS.IsOSProcessSampler {
+							lastS.OSTimeout = val
+						}
+					}
+				case "SystemSampler.expectedReturnCode":
+					if len(currentThreadGroup.Samplers) > 0 {
+						lastS := currentThreadGroup.Samplers[len(currentThreadGroup.Samplers)-1]
+						if lastS.IsOSProcessSampler {
+							lastS.OSExpectedReturnCode = val
+						}
+					}
 				case "HTTPSampler.method", "method":
 					if currentReq != nil {
 						currentReq.Method = val
 					}
-				case "server", "serverAddress":
+				case "server", "serverAddress", "domain":
 					domainVal = val
-				case "port", "serverPort":
+				case "port", "serverPort", "portString":
 					portVal = val
 				case "path", "contextPath":
 					pathVal = val
+				case "logFile":
+					currentLogFile = val
 				case "requestPayload":
 					if currentReq != nil {
 						currentReq.BodyTemplate = val
 					}
+				case "GraphQLHTTPSampler.query":
+					graphQLQuery = val
+				case "GraphQLHTTPSampler.variables":
+					graphQLVariables = val
+				case "GraphQLHTTPSampler.operationName":
+					graphQLOperationName = val
 				case "TLS", "protocol":
 					protocolVal = val
 				case "ThreadGroup.num_threads":
-					fmt.Printf("Parsed NumThreads: %s\n", val)
 					if currentThreadGroup != nil {
 						v, _ := strconv.Atoi(val)
 						currentThreadGroup.NumThreads = v

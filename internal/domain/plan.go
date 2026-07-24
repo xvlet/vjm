@@ -1,5 +1,9 @@
 package domain
 
+type ContextKey string
+
+const CancelTestKey ContextKey = "cancelTest"
+
 // SteppingConfig represents the properties of a SteppingThreadGroup.
 type SteppingConfig struct {
 	InitialDelay string
@@ -59,6 +63,7 @@ type ResultCollector struct {
 	Filename           string
 	ErrorLogging       bool // true if "ResultCollector.error_logging" is true
 	SuccessOnlyLogging bool // true if "ResultCollector.success_only_logging" is true
+	Configuration      map[string]bool
 	MailerModel        *MailerModel
 }
 
@@ -261,6 +266,34 @@ type Sampler struct {
 	PreProcessors     []PreProcessor
 	Extractors        []Extractor
 	Assertions        []Assertion
+
+	// TestAction (Flow Control Action) specific fields
+	TestActionAction   int
+	TestActionTarget   int
+	TestActionDuration string
+
+	// Debug Sampler specific fields
+	DebugJMeterVariables  bool
+	DebugJMeterProperties bool
+	DebugSystemProperties bool
+
+	// Access Log Sampler specific fields
+	IsAccessLogSampler    bool
+	AccessLogDomain       string
+	AccessLogPort         string
+	AccessLogFile         string
+	AccessLogImageParsing bool
+	AccessLogParser       string
+
+	// OS Process Sampler specific fields
+	IsOSProcessSampler   bool
+	OSCommand            string
+	OSDirectory          string
+	OSArguments          []string
+	OSEnvironment        map[string]string
+	OSTimeout            string
+	OSCheckReturnCode    bool
+	OSExpectedReturnCode string
 
 	// Loop/While/Critical/ForEach Controller specific fields (Control Flow Markers)
 	IsControlFlow          bool   // True if this is a marker (not a real request)

@@ -9,5 +9,6 @@ type Evaluator interface {
 	SetVariable(key, value string)
 	SetThreadNum(num int)
 	SetSamplerName(name string)
+	GetAllProperties() map[string]string
 	Clone() Evaluator
 }

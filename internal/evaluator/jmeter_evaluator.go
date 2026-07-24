@@ -134,6 +134,15 @@ func NewDefaultEvaluator(props map[string]string) *DefaultEvaluator {
 	}
 }
 
+func (e *DefaultEvaluator) GetAllProperties() map[string]string {
+	props := make(map[string]string)
+	e.shared.properties.Range(func(key, value interface{}) bool {
+		props[key.(string)] = value.(string)
+		return true
+	})
+	return props
+}
+
 func (e *DefaultEvaluator) Clone() Evaluator {
 	newVars := make(map[string]string)
 	e.mu.RLock()

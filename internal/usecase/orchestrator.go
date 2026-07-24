@@ -68,8 +68,8 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 		log.Printf("[Usecase] Warning: Failed to print vegeta report: %v", err)
 	}
 
-	log.Println("[Usecase] Converting Bin to JTL...")
-	err = u.reporter.ConvertToJTL(config.ResultBinPath, config.ResultJtlPath)
+	log.Printf("[Usecase] Converting Bin (%s) to JTL (%s)...", config.ResultBinPath, config.ResultJtlPath)
+	err = u.reporter.ConvertToJTL(plan, config.ResultBinPath, config.ResultJtlPath)
 	if err != nil {
 		return fmt.Errorf("JTL conversion failed: %w", err)
 	}
@@ -122,7 +122,7 @@ func (u *defaultStressTestUsecase) GenerateReportOnly(inputPath string, reportDi
 		}
 
 		log.Printf("[Usecase] Converting Bin (%s) to JTL (%s)...", inputPath, jtlPath)
-		err := u.reporter.ConvertToJTL(inputPath, jtlPath)
+		err := u.reporter.ConvertToJTL(nil, inputPath, jtlPath)
 		if err != nil {
 			return fmt.Errorf("JTL conversion failed: %w", err)
 		}
