@@ -835,14 +835,11 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								var shouldContinue bool
 								if condStr != "" && strings.ToUpper(condStr) != "LAST" {
 									shouldContinue = session.Evaluator.EvaluateLogic(condStr)
+								} else if strings.ToUpper(condStr) == "LAST" {
+									shouldContinue = session.LastSampleOK
 								} else {
-									count := session.LoopCounters[sampler.LoopId]
-									if condStr == "" && count == 0 {
-										shouldContinue = true
-									} else {
-										shouldContinue = session.LastSampleOK
-									}
-									session.LoopCounters[sampler.LoopId] = count + 1
+									// condStr == "" means infinite loop in JMeter
+									shouldContinue = true
 								}
 
 								if !shouldContinue {
@@ -1136,21 +1133,22 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 										}
 									}
 								case 0: // Stop Thread
-									break samplerLoop
-								case 2: // Stop Test
+									return
+								case 2, 3: // Stop Test, Stop Test Now
+									atomic.StoreInt32(&a.stopped, 1)
 									if cancelFn, ok := ctx.Value(domain.CancelTestKey).(context.CancelFunc); ok {
 										cancelFn()
 									}
+									return
+								case 4: // Start Next Thread Loop
 									break samplerLoop
-								case 3: // Go to next loop iteration
+								case 5: // Go to next loop iteration
 									if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
 										step = loopEnd - 1
 										continue samplerLoop
 									}
 									break samplerLoop
-								case 4: // Start Next Thread Loop
-									break samplerLoop
-								case 5: // Break Current Loop
+								case 6: // Break Current Loop
 									if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
 										step = loopEnd
 										continue samplerLoop
@@ -2021,9 +2019,9 @@ func findEnclosingLoopEnd(samplers []*domain.Sampler, currentStep int) int {
 			continue
 		}
 		switch s.ControlType {
-		case "LoopStart", "WhileStart", "ForEachStart":
+		case "LoopStart", "WhileStart", "ForEachStart", "RuntimeStart", "CriticalStart", "ThroughputStart", "SwitchStart", "InterleaveStart", "RandomStart", "RandomOrderStart", "TransactionStart":
 			depth++
-		case "LoopEnd", "WhileEnd", "ForEachEnd":
+		case "LoopEnd", "WhileEnd", "ForEachEnd", "RuntimeEnd", "CriticalEnd", "ThroughputEnd", "SwitchEnd", "InterleaveEnd", "RandomEnd", "RandomOrderEnd", "TransactionEnd":
 			if depth == 0 {
 				return i
 			}
