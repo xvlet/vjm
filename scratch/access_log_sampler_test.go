@@ -19,6 +19,13 @@ import (
 func TestAccessLogSampler(t *testing.T) {
 	_ = os.Remove("bin_access.bin")
 
+	mockLog := "\"GET /test/sampler/http/get?q=1 HTTP/1.1\"\n\"POST /test/sampler/http/post HTTP/1.1\"\n"
+	err := os.WriteFile("access.log", []byte(mockLog), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create mock access.log: %v", err)
+	}
+	defer os.Remove("access.log")
+
 	var getCount int32
 	var postCount int32
 

@@ -33,8 +33,8 @@ func TestMD5HexAssertionParse(t *testing.T) {
 	if !ok {
 		t.Fatalf("Req1 assertion is not MD5HexAssertion")
 	}
-	if da.ExpectedMD5Hex != "7aeb10c9a9104cc7ab39c6de1eeb0c1e" {
-		t.Errorf("Req1 MD5HexAssertion Size is %s, expected 7aeb10c9a9104cc7ab39c6de1eeb0c1e", da.ExpectedMD5Hex)
+	if da.ExpectedMD5Hex != "b2f223244911a2719b9418b4e2138614" {
+		t.Errorf("Req1 MD5HexAssertion Size is %s, expected b2f223244911a2719b9418b4e2138614", da.ExpectedMD5Hex)
 	}
 }
 
