@@ -213,6 +213,7 @@ type Session struct {
 	CallStack        []CallFrame
 	Plan             *domain.TestPlan
 	LastResponseBody []byte
+	LastSampleOK     bool
 }
 
 type CallFrame struct {
@@ -248,6 +249,7 @@ func NewSession(id uint64, plan *domain.TestPlan, tg *domain.ThreadGroup, global
 		RandomOrderState: make(map[int]*RandomOrderState),
 		RuntimeDeadlines: make(map[int]time.Time),
 		Plan:             plan,
+		LastSampleOK:     true, // Default to true so LAST works on first request
 	}
 }
 
@@ -830,12 +832,22 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								}
 							case "WhileStart":
 								condStr := sampler.WhileCondition
+								var shouldContinue bool
 								if condStr != "" && strings.ToUpper(condStr) != "LAST" {
-									// EvaluateLogic returns false if expression resolves to false
-									if !session.Evaluator.EvaluateLogic(condStr) {
-										// Exit loop: jump to WhileEnd (step++ will advance to the next sampler)
-										step = sampler.LoopJumpIndex
+									shouldContinue = session.Evaluator.EvaluateLogic(condStr)
+								} else {
+									count := session.LoopCounters[sampler.LoopId]
+									if condStr == "" && count == 0 {
+										shouldContinue = true
+									} else {
+										shouldContinue = session.LastSampleOK
 									}
+									session.LoopCounters[sampler.LoopId] = count + 1
+								}
+
+								if !shouldContinue {
+									step = sampler.LoopJumpIndex
+									delete(session.LoopCounters, sampler.LoopId)
 								}
 							case "WhileEnd":
 								// Jump back to WhileStart so condition is evaluated again
@@ -1572,6 +1584,15 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									break // fail fast on first assertion error
 								}
 							}
+						}
+
+						session.LastSampleOK = (res.Code < 400 && res.Error == "")
+						if session.LastSampleOK {
+							session.Variables["JMeterThread.last_sample_ok"] = "true"
+							session.Evaluator.SetVariable("JMeterThread.last_sample_ok", "true")
+						} else {
+							session.Variables["JMeterThread.last_sample_ok"] = "false"
+							session.Evaluator.SetVariable("JMeterThread.last_sample_ok", "false")
 						}
 
 						select {
