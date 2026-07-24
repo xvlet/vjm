@@ -58,25 +58,56 @@ flowchart LR
 
 ---
 
-## Unsupported JMeter Features (Architectural Limitations)
+## Test Result Example
 
-Because `vjm` translates JMeter's **Thread-based, sequential state** model into Vegeta's engine, some JMeter elements heavily reliant on JVM infrastructure remain unsupported:
-
-*   **JVM-Dependent Elements (e.g., JSR223, BeanShell, JDBC)**: `vjm` is a native Go application and does not embed a Java Virtual Machine. Elements requiring Java script execution or JDBC drivers are not supported.
-
-*(Note: Essential stateful features like Complex Logic Controllers (If, While, Loop, ForEach), Extractors, HTTP Cookie Manager, Timers, and Assertions **ARE** fully supported via `vjm`'s internal engine enhancements.)*
+![Test Result Demo](demo.gif)
 
 ---
 
-## Prerequisites
+## Quick Start
 
-`vjm` is a statically compiled Go binary with **no external dependencies required** to run a load test.
+### 1. Run a Load Test
 
-| Tool | Purpose | Installation Check |
-|------|---------|-------------------|
-| [Apache JMeter](https://jmeter.apache.org/) | HTML report generation (Optional) | `$JMETER_HOME/bin/jmeter -v` |
+```bash
+# Basic run: Specify JMX file, 3000 TPS, 60 seconds, max 200 workers
+./vjm -t my_test.jmx -r 3000 -d 60s -w 200
 
-> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself. Vegeta is embedded directly into the `vjm` engine.
+# Inject environment parameters by loading multiple properties files
+./vjm -t my_test.jmx \
+      -p common.properties \
+      -p headers.properties \
+      -r 5000 -d 30s -w 300
+
+# Specify custom result file path
+./vjm -t my_test.jmx -r 1000 -d 10s -l ./results/my_result.bin
+
+# Force CLI rate, duration, and worker options, ignoring JMX Thread Group configuration
+# (e.g., Useful for overriding Stepping Thread Group scenarios to forcefully apply CLI options)
+./vjm -t my_test.jmx -r 2000 -d 30s -w 100 -f
+```
+
+### 2. Run Load Test + Generate HTML Report
+
+```bash
+./vjm -t my_test.jmx \
+      -p common.properties \
+      -r 3000 -d 60s -w 200 \
+      -e ./html-report
+```
+
+After execution, check the JMeter dashboard at `./html-report/report_<timestamp>/index.html`.
+
+### 3. Generate Report from Existing Results
+
+If you already have a `.bin` or `.jtl` file, you can generate a report without running a load test.
+
+```bash
+# Convert .bin to JTL + Generate HTML report
+./vjm -g results/result_20260701_110632.bin -e ./html-report
+
+# If you already have a .jtl file: Skip JTL conversion, generate report only
+./vjm -g results/result_20260701_110632.jtl -e ./html-report
+```
 
 ---
 
@@ -140,82 +171,15 @@ docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t tes
 
 ---
 
-## Build
+## Prerequisites
 
-```bash
-git clone https://github.com/xvlet/vjm.git
-cd vjm
+`vjm` is a statically compiled Go binary with **no external dependencies required** to run a load test.
 
-# Build for specific platform (e.g., Linux amd64)
-make linux_amd64
+| Tool | Purpose | Installation Check |
+|------|---------|-------------------|
+| [Apache JMeter](https://jmeter.apache.org/) | HTML report generation (Optional) | `$JMETER_HOME/bin/jmeter -v` |
 
-# Other available targets:
-# linux_arm64, darwin_amd64, darwin_arm64, windows_amd64, windows_arm64, aix_ppc64
-
-# Build all supported platforms
-make all
-
-# Check build outputs
-ls build/
-# vjm_linux_amd64.tar.gz   vjm_windows_amd64.zip   ...
-```
-
-### Manual Build
-
-```bash
-# Linux
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vjm ./cmd/vjm/main.go
-
-# AIX (PowerPC)
-GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o vjm_aix ./cmd/vjm/main.go
-```
-
----
-
-## Quick Start
-
-### 1. Run a Load Test
-
-```bash
-# Basic run: Specify JMX file, 3000 TPS, 60 seconds, max 200 workers
-./vjm -t my_test.jmx -r 3000 -d 60s -w 200
-
-# Inject environment parameters by loading multiple properties files
-./vjm -t my_test.jmx \
-      -p common.properties \
-      -p headers.properties \
-      -r 5000 -d 30s -w 300
-
-# Specify custom result file path
-./vjm -t my_test.jmx -r 1000 -d 10s -l ./results/my_result.bin
-
-# Force CLI rate, duration, and worker options, ignoring JMX Thread Group configuration
-# (e.g., Useful for overriding Stepping Thread Group scenarios to forcefully apply CLI options)
-./vjm -t my_test.jmx -r 2000 -d 30s -w 100 -f
-```
-
-### 2. Run Load Test + Generate HTML Report
-
-```bash
-./vjm -t my_test.jmx \
-      -p common.properties \
-      -r 3000 -d 60s -w 200 \
-      -e ./html-report
-```
-
-After execution, check the JMeter dashboard at `./html-report/report_<timestamp>/index.html`.
-
-### 3. Generate Report from Existing Results
-
-If you already have a `.bin` or `.jtl` file, you can generate a report without running a load test.
-
-```bash
-# Convert .bin to JTL + Generate HTML report
-./vjm -g results/result_20260701_110632.bin -e ./html-report
-
-# If you already have a .jtl file: Skip JTL conversion, generate report only
-./vjm -g results/result_20260701_110632.jtl -e ./html-report
-```
+> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself. Vegeta is embedded directly into the `vjm` engine.
 
 ---
 
@@ -349,69 +313,6 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 | `${__StringFromFile(file,var)}` | Reads lines from a file sequentially (round-robin, thread-safe) | `${__StringFromFile(data.txt,LINE)}` |
 | `${__regexFunction(...)}` | Regex extraction (returns default value in vjm; use Regex Extractor instead) | `${__regexFunction(regex,tmpl,match,def)}` |
 | `${varName}` | Variable reference | `${target.host}` |
-
----
-
-## Architecture
-
-```text
-cmd/vjm/
-└── main.go                  # CLI entrypoint, flag parsing
-
-internal/
-├── domain/
-│   ├── entity.go            # TestConfig, RequestTemplate domain models
-│   └── plan.go              # TestPlan, ThreadGroup, Sampler domain models
-│
-├── evaluator/
-│   ├── evaluator.go         # Evaluator interface
-│   └── jmeter_evaluator.go  # JMeter function/variable evaluator implementation
-│
-├── infra/
-│   ├── parser/
-│   │   └── jmx_parser.go    # JMX XML parser (SAX style streaming)
-│   ├── vegeta/
-│   │   └── runner.go        # Vegeta process execution and streaming target provider
-│   └── jmeter/
-│       └── reporter.go      # Vegeta CSV → JTL conversion / JMeter report invocation
-│
-└── usecase/
-    ├── interfaces.go        # Port interfaces (StressTestUsecase, JmxParser, etc.)
-    └── orchestrator.go      # Usecase implementation (Execute, GenerateReportOnly)
-```
-
----
-
-## AIX Environment Execution
-
-Execution tips for the AIX PowerPC environment.
-
-```bash
-# asyncpreemptoff=1: Stabilizes AIX signal handling in older Go versions
-GODEBUG=asyncpreemptoff=1 ./vjm_aix \
-    -t test.jmx \
-    -p common.properties \
-    -r 3000 -d 60s -w 200
-```
-
-### Recommended AIX Network Tuning
-
-For maximum performance at massive TPS, apply the following settings with root privileges.
-
-```bash
-no -p -o rfc1323=1             # Enable TCP Window Scaling
-no -p -o tcp_recvspace=262144  # TCP receive buffer 256KB
-no -p -o tcp_sendspace=262144  # TCP send buffer 256KB
-no -p -o sb_max=4194304        # Max socket buffer 4MB
-no -p -o somaxconn=8192        # Expand socket backlog queue
-no -p -o tcp_ephemeral_low=10241  # Expand ephemeral port range
-```
-
----
-
-## Test Result Example
-
-![Test Result Demo](demo.gif)
 
 ---
 
@@ -577,6 +478,105 @@ no -p -o tcp_ephemeral_low=10241  # Expand ephemeral port range
 - ~~[ ] **HTTP Mirror Server**~~ (Excluded - GUI local debugging server)
 - ~~[ ] **HTTP(S) Test Script Recorder**~~ (Excluded - GUI proxy recorder)
 - ~~[ ] **Property Display**~~ (Excluded - GUI component)
+
+---
+
+## Unsupported JMeter Features (Architectural Limitations)
+
+Because `vjm` translates JMeter's **Thread-based, sequential state** model into Vegeta's engine, some JMeter elements heavily reliant on JVM infrastructure remain unsupported:
+
+*   **JVM-Dependent Elements (e.g., JSR223, BeanShell, JDBC)**: `vjm` is a native Go application and does not embed a Java Virtual Machine. Elements requiring Java script execution or JDBC drivers are not supported.
+
+*(Note: Essential stateful features like Complex Logic Controllers (If, While, Loop, ForEach), Extractors, HTTP Cookie Manager, Timers, and Assertions **ARE** fully supported via `vjm`'s internal engine enhancements.)*
+
+---
+
+## Architecture
+
+```text
+cmd/vjm/
+└── main.go                  # CLI entrypoint, flag parsing
+
+internal/
+├── domain/
+│   ├── entity.go            # TestConfig, RequestTemplate domain models
+│   └── plan.go              # TestPlan, ThreadGroup, Sampler domain models
+│
+├── evaluator/
+│   ├── evaluator.go         # Evaluator interface
+│   └── jmeter_evaluator.go  # JMeter function/variable evaluator implementation
+│
+├── infra/
+│   ├── parser/
+│   │   └── jmx_parser.go    # JMX XML parser (SAX style streaming)
+│   ├── vegeta/
+│   │   └── runner.go        # Vegeta process execution and streaming target provider
+│   └── jmeter/
+│       └── reporter.go      # Vegeta CSV → JTL conversion / JMeter report invocation
+│
+└── usecase/
+    ├── interfaces.go        # Port interfaces (StressTestUsecase, JmxParser, etc.)
+    └── orchestrator.go      # Usecase implementation (Execute, GenerateReportOnly)
+```
+
+---
+
+## Build
+
+```bash
+git clone https://github.com/xvlet/vjm.git
+cd vjm
+
+# Build for specific platform (e.g., Linux amd64)
+make linux_amd64
+
+# Other available targets:
+# linux_arm64, darwin_amd64, darwin_arm64, windows_amd64, windows_arm64, aix_ppc64
+
+# Build all supported platforms
+make all
+
+# Check build outputs
+ls build/
+# vjm_linux_amd64.tar.gz   vjm_windows_amd64.zip   ...
+```
+
+### Manual Build
+
+```bash
+# Linux
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vjm ./cmd/vjm/main.go
+
+# AIX (PowerPC)
+GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o vjm_aix ./cmd/vjm/main.go
+```
+
+---
+
+## AIX Environment Execution
+
+Execution tips for the AIX PowerPC environment.
+
+```bash
+# asyncpreemptoff=1: Stabilizes AIX signal handling in older Go versions
+GODEBUG=asyncpreemptoff=1 ./vjm_aix \
+    -t test.jmx \
+    -p common.properties \
+    -r 3000 -d 60s -w 200
+```
+
+### Recommended AIX Network Tuning
+
+For maximum performance at massive TPS, apply the following settings with root privileges.
+
+```bash
+no -p -o rfc1323=1             # Enable TCP Window Scaling
+no -p -o tcp_recvspace=262144  # TCP receive buffer 256KB
+no -p -o tcp_sendspace=262144  # TCP send buffer 256KB
+no -p -o sb_max=4194304        # Max socket buffer 4MB
+no -p -o somaxconn=8192        # Expand socket backlog queue
+no -p -o tcp_ephemeral_low=10241  # Expand ephemeral port range
+```
 
 ---
 

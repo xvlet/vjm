@@ -1131,8 +1131,18 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									}
 									break samplerLoop
 								case 3: // Go to next loop iteration
-									// TODO(MEDIUM-9): Support jumping to the start of the current LoopController iteration
-									// instead of terminating the entire thread group iteration completely.
+									if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+										step = loopEnd - 1
+										continue samplerLoop
+									}
+									break samplerLoop
+								case 4: // Start Next Thread Loop
+									break samplerLoop
+								case 5: // Break Current Loop
+									if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+										step = loopEnd
+										continue samplerLoop
+									}
 									break samplerLoop
 								}
 							case "DebugSampler":
@@ -1589,7 +1599,19 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									cancelFn()
 								}
 								return
-							case 4, 5, 6: // Start Next Thread Loop / Break Loop
+							case 4: // Start Next Thread Loop
+								break samplerLoop
+							case 5: // Go to next loop iteration
+								if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+									step = loopEnd - 1
+									continue samplerLoop
+								}
+								break samplerLoop
+							case 6: // Break Current Loop
+								if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+									step = loopEnd
+									continue samplerLoop
+								}
 								break samplerLoop
 							}
 						}
@@ -1967,4 +1989,25 @@ func EvaluatePreProcessors(session *Session, sampler *domain.Sampler) string {
 		}
 	}
 	return modifiedURL
+}
+
+// findEnclosingLoopEnd finds the nearest active LoopEnd/WhileEnd/ForEachEnd index for the current scope.
+func findEnclosingLoopEnd(samplers []*domain.Sampler, currentStep int) int {
+	depth := 0
+	for i := currentStep + 1; i < len(samplers); i++ {
+		s := samplers[i]
+		if !s.IsControlFlow {
+			continue
+		}
+		switch s.ControlType {
+		case "LoopStart", "WhileStart", "ForEachStart":
+			depth++
+		case "LoopEnd", "WhileEnd", "ForEachEnd":
+			if depth == 0 {
+				return i
+			}
+			depth--
+		}
+	}
+	return -1
 }
