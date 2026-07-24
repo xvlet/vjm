@@ -9,7 +9,7 @@ export GOTOOLCHAIN=auto
 
 # SBOM, Vulnerability
 MKDOCDIR = mkdir -p
-SBOM_DIR = docs
+SBOM_DIR = build
 
 .PHONY: all clean check docs linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 windows_amd64 windows_arm64 aix_ppc64
 
@@ -84,9 +84,9 @@ docs:
 	$(MKDOCDIR) $(SBOM_DIR)
 	@echo "Generating SBOM (Filesystem)..."
 	trivy fs --format cyclonedx \
-		-o $(SBOM_DIR)/$(APP_NAME)-fs.cdx.json .
+		-o $(SBOM_DIR)/sbom.cdx.json .
 	trivy fs --format spdx-json \
-		-o $(SBOM_DIR)/$(APP_NAME)-fs.spdx.json .
+		-o $(SBOM_DIR)/sbom.spdx.json .
 
 	@echo "Generating Vulnerability Report..."
 	trivy fs \

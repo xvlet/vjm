@@ -9,7 +9,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/oliveagle/jsonpath v0.1.4
 	github.com/tsenart/vegeta/v12 v12.13.0
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.56.0
 )
 
 require (

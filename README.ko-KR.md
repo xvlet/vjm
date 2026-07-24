@@ -424,6 +424,30 @@ no -p -o tcp_ephemeral_low=10241  # 임시 포트 범위 확장
 - [x] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
 - [x] **실시간 콘솔 대시보드**: 테스트 진행 중 실시간 TPS / 응답시간 모니터링
 
+### Samplers
+- [x] **Flow Control Action**
+- [x] **HTTP Request**
+- [x] **Debug Sampler**
+- ~~[ ] **JSR223 Sampler**~~ (제외 - 무거운 JVM 스크립팅 엔진 필요)
+- ~~[ ] **AJP/1.3 Sampler**~~ (제외 - Tomcat 전용 레거시 프로토콜, 비 HTTP)
+- [x] **Access Log Sampler**
+- ~~[ ] **BeanShell Sampler**~~ (제외 - 레거시 Java 스크립팅, 성능 저하 요인)
+- ~~[ ] **Bolt Request**~~ (제외 - 데이터베이스 프로토콜, 비 HTTP)
+- ~~[ ] **FTP Request**~~ (제외 - 레거시 프로토콜, 비 HTTP)
+- [x] **GraphQL HTTP Request**
+- ~~[ ] **JDBC Request**~~ (제외 - 데이터베이스 프로토콜, 비 HTTP)
+- ~~[ ] **JMS Point-to-Point**~~ (제외 - 메시지 큐 지향, 비 HTTP)
+- ~~[ ] **JMS Publisher**~~ (제외 - 메시지 큐 지향, 비 HTTP)
+- ~~[ ] **JMS Subscriber**~~ (제외 - 메시지 큐 지향, 비 HTTP)
+- ~~[ ] **JUnit Request**~~ (제외 - JVM 의존성)
+- ~~[ ] **Java Request**~~ (제외 - 커스텀 JVM 클래스 로딩 필요)
+- ~~[ ] **LDAP Extended Request**~~ (제외 - 비 HTTP)
+- ~~[ ] **LDAP Request**~~ (제외 - 비 HTTP)
+- ~~[ ] **Mail Reader Sampler**~~ (제외 - 비 HTTP)
+- [x] **OS Process Sampler**
+- ~~[ ] **SMTP Sampler**~~ (제외 - 비 HTTP)
+- ~~[ ] **TCP Sampler**~~ (제외 - 비 HTTP)
+
 ### 쓰레드 그룹(Thread Group) 지원 현황
 - [x] **Thread Group** (기본)
 - [x] **jp@gc - Stepping Thread Group**

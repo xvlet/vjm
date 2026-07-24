@@ -26,7 +26,12 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		return fmt.Errorf("test plan is empty or has no thread groups")
 	}
 
-	totalSamplers := 0
+	// Create context and save cancel func to context so workers can trigger Stop Test
+	ctx, cancel := context.WithCancel(ctx)
+	ctx = context.WithValue(ctx, domain.CancelTestKey, cancel)
+	defer cancel()
+
+	var totalSamplers int
 	for _, tg := range plan.ThreadGroups {
 		totalSamplers += len(tg.Samplers)
 	}

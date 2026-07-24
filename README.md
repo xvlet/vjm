@@ -425,6 +425,30 @@ no -p -o tcp_ephemeral_low=10241  # Expand ephemeral port range
 - [x] **WebSocket Support**: Integration for WS protocol load testing
 - [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
 
+### Samplers
+- [x] **Flow Control Action**
+- [x] **HTTP Request**
+- [x] **Debug Sampler**
+- ~~[ ] **JSR223 Sampler**~~ (Excluded - Requires heavy JVM scripting engine)
+- ~~[ ] **AJP/1.3 Sampler**~~ (Excluded - Tomcat-specific legacy protocol, non-HTTP)
+- [x] **Access Log Sampler**
+- ~~[ ] **BeanShell Sampler**~~ (Excluded - Legacy Java scripting, performance bottleneck)
+- ~~[ ] **Bolt Request**~~ (Excluded - Database protocol, non-HTTP)
+- ~~[ ] **FTP Request**~~ (Excluded - Legacy protocol, non-HTTP)
+- [x] **GraphQL HTTP Request**
+- ~~[ ] **JDBC Request**~~ (Excluded - Database protocol, non-HTTP)
+- ~~[ ] **JMS Point-to-Point**~~ (Excluded - Message queue oriented, non-HTTP)
+- ~~[ ] **JMS Publisher**~~ (Excluded - Message queue oriented, non-HTTP)
+- ~~[ ] **JMS Subscriber**~~ (Excluded - Message queue oriented, non-HTTP)
+- ~~[ ] **JUnit Request**~~ (Excluded - JVM dependency)
+- ~~[ ] **Java Request**~~ (Excluded - Requires loading custom JVM classes)
+- ~~[ ] **LDAP Extended Request**~~ (Excluded - Non-HTTP)
+- ~~[ ] **LDAP Request**~~ (Excluded - Non-HTTP)
+- ~~[ ] **Mail Reader Sampler**~~ (Excluded - Non-HTTP)
+- [x] **OS Process Sampler**
+- ~~[ ] **SMTP Sampler**~~ (Excluded - Non-HTTP)
+- ~~[ ] **TCP Sampler**~~ (Excluded - Non-HTTP)
+
 ### Thread Group Support
 - [x] **Thread Group** (Standard)
 - [x] **jp@gc - Stepping Thread Group**

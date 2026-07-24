@@ -18,6 +18,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -252,13 +253,15 @@ func NewSession(id uint64, plan *domain.TestPlan, tg *domain.ThreadGroup, global
 
 // StatefulAttacker is a custom attacker that manages virtual user sessions
 type StatefulAttacker struct {
-	transport   *http.Transport
-	maxW        uint64
-	pacer       vegeta.Pacer
-	dur         time.Duration
-	stopped     int32
-	needsBody   bool
-	workerPacer domain.WorkerPacer
+	transport          *http.Transport
+	maxW               uint64
+	pacer              vegeta.Pacer
+	dur                time.Duration
+	stopped            int32
+	needsBody          bool
+	workerPacer        domain.WorkerPacer
+	workers            int
+	accessLogStreamers sync.Map
 }
 
 func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration, needsBody bool, workerPacer domain.WorkerPacer) *StatefulAttacker {
@@ -283,6 +286,7 @@ func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration, 
 		dur:         dur,
 		needsBody:   needsBody,
 		workerPacer: workerPacer,
+		workers:     int(workers),
 	}
 }
 
@@ -777,6 +781,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 					// Execute samplers sequentially
 					step := 0
+				samplerLoop:
 					for ; ; step++ {
 						if step >= len(session.Tg.Samplers) {
 							if len(session.CallStack) > 0 {
@@ -784,9 +789,9 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								session.CallStack = session.CallStack[:len(session.CallStack)-1]
 								session.Tg = frame.Tg
 								step = frame.Step
-								continue
+								continue samplerLoop
 							}
-							break
+							break samplerLoop
 						}
 
 						if jump, ok := session.InterleaveJump[step]; ok {
@@ -1107,6 +1112,66 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								}
 							case "RandomOrderEnd":
 								// Just fall through
+							case "TestAction":
+								switch sampler.TestActionAction {
+								case 1: // Pause
+									durStr := session.Evaluator.Evaluate(sampler.TestActionDuration)
+									if ms, err := strconv.Atoi(durStr); err == nil && ms > 0 {
+										select {
+										case <-time.After(time.Duration(ms) * time.Millisecond):
+										case <-ctx.Done():
+											return
+										}
+									}
+								case 0: // Stop Thread
+									break samplerLoop
+								case 2: // Stop Test
+									if cancelFn, ok := ctx.Value(domain.CancelTestKey).(context.CancelFunc); ok {
+										cancelFn()
+									}
+									break samplerLoop
+								case 3: // Go to next loop iteration
+									// TODO(MEDIUM-9): Support jumping to the start of the current LoopController iteration
+									// instead of terminating the entire thread group iteration completely.
+									break samplerLoop
+								}
+							case "DebugSampler":
+								var body bytes.Buffer
+								if sampler.DebugJMeterVariables {
+									for k, v := range session.Variables {
+										body.WriteString(k + "=" + v + "\n")
+									}
+									log.Printf("[DebugSampler] Variables: %v", session.Variables)
+								}
+								if sampler.DebugJMeterProperties || sampler.DebugSystemProperties {
+									body.WriteString("=== Properties ===\n")
+									// For now, we only have one set of properties in Evaluator
+									props := session.Evaluator.GetAllProperties()
+									for k, v := range props {
+										body.WriteString(k + "=" + v + "\n")
+									}
+									if sampler.DebugJMeterProperties {
+										log.Printf("[DebugSampler] JMeterProperties requested")
+									}
+									if sampler.DebugSystemProperties {
+										log.Printf("[DebugSampler] SystemProperties requested")
+									}
+								}
+								res := &vegeta.Result{
+									Attack:    sampler.Name,
+									Seq:       uint64(step),
+									Timestamp: time.Now(),
+									Latency:   0,
+									Method:    "DEBUG",
+									URL:       "DebugSampler",
+									Code:      200,
+									BytesIn:   uint64(body.Len()),
+								}
+								select {
+								case results <- res:
+								case <-ctx.Done():
+									return
+								}
 							}
 							continue
 						}
@@ -1155,6 +1220,13 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 						// Evaluate variables in URL; EvaluatePreProcessors may return a modified URL
 						// (prevents data race by not mutating the shared sampler.Request.URL directly)
+
+						var res *vegeta.Result
+						var bodyBytes []byte
+						var resp *http.Response
+						var req *http.Request
+						var err error
+
 						preProcessedURL := EvaluatePreProcessors(session, sampler)
 						var reqURL string
 						if preProcessedURL != "" {
@@ -1165,175 +1237,283 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						method := sampler.Request.Method
 						bodyStr := session.Evaluator.Evaluate(sampler.Request.BodyTemplate)
 
-						if len(sampler.Request.Arguments) > 0 {
-							var args []string
-							for _, arg := range sampler.Request.Arguments {
-								k := url.QueryEscape(session.Evaluator.Evaluate(arg[0]))
-								v := url.QueryEscape(session.Evaluator.Evaluate(arg[1]))
-								args = append(args, k+"="+v)
-							}
-							qs := strings.Join(args, "&")
-							if method == "GET" || method == "DELETE" {
-								if strings.Contains(reqURL, "?") {
-									reqURL += "&" + qs
-								} else {
-									reqURL += "?" + qs
-								}
-							} else {
-								if bodyStr != "" {
-									bodyStr += "&" + qs
-								} else {
-									bodyStr = qs
-								}
-							}
-						}
-
-						var bodyReader io.Reader
-						if bodyStr != "" {
-							bodyReader = strings.NewReader(bodyStr)
-						}
-						reqCtx := ctx
-						var cancel context.CancelFunc
-						for _, p := range sampler.PreProcessors {
-							if st, ok := p.(*domain.SampleTimeout); ok {
-								timeoutStr := session.Evaluator.Evaluate(st.Timeout)
-								if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
-									reqCtx, cancel = context.WithTimeout(reqCtx, time.Duration(t)*time.Millisecond)
-								}
-							}
-						}
-
-						req, err := http.NewRequestWithContext(reqCtx, method, reqURL, bodyReader)
-						if err != nil {
-							if cancel != nil {
-								cancel()
-							}
-							// Record a failure result so it appears in the report instead of silently skipping
-							failRes := &vegeta.Result{
-								Attack:    sampler.Name,
-								Seq:       uint64(step),
-								Timestamp: time.Now(),
-								Latency:   0,
-								Method:    method,
-								URL:       reqURL,
-								Error:     fmt.Sprintf("invalid request: %v", err),
-							}
+						if sampler.IsAccessLogSampler && sampler.AccessLogFile != "" {
+							streamer := a.getAccessLogStreamer(ctx, session.Evaluator.Evaluate(sampler.AccessLogFile), a.maxW)
 							select {
-							case results <- failRes:
+							case entry, ok := <-streamer.C:
+								if ok {
+									method = entry.Method
+									// Append path to domain/port
+									reqURL += entry.Path
+								}
 							case <-ctx.Done():
 								return
 							}
-							continue
 						}
 
-						// Evaluate headers
-						for k, v := range sampler.Request.Headers {
-							req.Header.Set(k, session.Evaluator.Evaluate(v))
-						}
-
-						if cacheManager != nil {
-							if entry, ok := session.Cache[reqURL]; ok {
-								if entry.ETag != "" {
-									req.Header.Set("If-None-Match", entry.ETag)
-								}
-								if entry.LastModified != "" {
-									req.Header.Set("If-Modified-Since", entry.LastModified)
-								}
-							}
-						}
-
-						if authManager != nil {
-							for _, auth := range authManager.AuthList {
-								authUrl := session.Evaluator.Evaluate(auth.URL)
-								if strings.HasPrefix(reqURL, authUrl) {
-									user := session.Evaluator.Evaluate(auth.Username)
-									pass := session.Evaluator.Evaluate(auth.Password)
-									mech := session.Evaluator.Evaluate(auth.Mechanism)
-									if mech == "" || mech == "BASIC_DIGEST" || mech == "BASIC" {
-										authStr := user + ":" + pass
-										b64 := base64.StdEncoding.EncodeToString([]byte(authStr))
-										req.Header.Set("Authorization", "Basic "+b64)
-									}
-									break
-								}
-							}
-						}
-
-						start := time.Now()
-						resp, err := sessionClient.Do(req)
-						elapsed := time.Since(start)
-						if cancel != nil {
-							cancel()
-						}
-
-						attackName := sampler.Name
-						if sampler.TransactionName != "" && sampler.TransactionParent {
-							attackName = sampler.TransactionName
-						}
-
-						res := &vegeta.Result{
-							Attack:    attackName,
-							Seq:       uint64(step),
-							Timestamp: start,
-							Latency:   elapsed,
-							Method:    method,
-							URL:       reqURL,
-						}
-
-						var bodyBytes []byte
-						if err == nil {
-							res.Code = uint16(resp.StatusCode)
-							needsBody := true // Always read body in stateful mode for subsequent PreProcessors (like HTMLLinkParser)
-
-							bufPtr := bufferPool.Get().(*[]byte)
-							buf := *bufPtr
-
-							if needsBody {
-								// Direct use of bytes.Buffer: optimized from 2 copies via strings.Builder to 0 copies
-								var bb bytes.Buffer
-								bb.Grow(4096)
-								// Scale max body size based on worker count to prevent OOM (MEDIUM-23)
-								var maxBodySize int64 = 5 * 1024 * 1024 // 5MB default
-								if a.maxW >= 1000 {
-									maxBodySize = 2 * 1024 * 1024
-								}
-								if a.maxW >= 500 {
-									maxBodySize = 512 * 1024
-								}
-								if !a.needsBody {
-									maxBodySize = 0
-								}
-
-								written, _ := io.CopyBuffer(&bb, io.LimitReader(resp.Body, maxBodySize), buf)
-								if written == maxBodySize {
-									rest, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
-									written += rest
-								}
-								bodyBytes = bb.Bytes()
-								res.BytesIn = uint64(written)
-							} else {
-								written, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
-								res.BytesIn = uint64(written)
+						if sampler.IsOSProcessSampler {
+							cmdStr := session.Evaluator.Evaluate(sampler.OSCommand)
+							dirStr := session.Evaluator.Evaluate(sampler.OSDirectory)
+							timeoutStr := session.Evaluator.Evaluate(sampler.OSTimeout)
+							var args []string
+							for _, a := range sampler.OSArguments {
+								args = append(args, session.Evaluator.Evaluate(a))
 							}
 
-							_ = resp.Body.Close()  // Close first (ensures read is complete)
-							bufferPool.Put(bufPtr) // Then return to Pool
+							execCtx := ctx
+							var cancel context.CancelFunc
+							if timeoutStr != "" && timeoutStr != "0" {
+								if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
+									execCtx, cancel = context.WithTimeout(ctx, time.Duration(t)*time.Millisecond)
+								}
+							}
 
+							cmd := exec.CommandContext(execCtx, cmdStr, args...)
+							if dirStr != "" {
+								cmd.Dir = dirStr
+							}
+							if len(sampler.OSEnvironment) > 0 {
+								cmd.Env = os.Environ()
+								for k, v := range sampler.OSEnvironment {
+									cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", session.Evaluator.Evaluate(k), session.Evaluator.Evaluate(v)))
+								}
+							}
+
+							start := time.Now()
+							output, err := cmd.CombinedOutput()
+							elapsed := time.Since(start)
+
+							if cancel != nil {
+								cancel()
+							}
+
+							attackName := sampler.Name
+							if sampler.TransactionName != "" && sampler.TransactionParent {
+								attackName = sampler.TransactionName
+							}
+
+							statusCode := uint16(200)
+							errMsg := ""
+
+							if err != nil {
+								if _, isExitError := err.(*exec.ExitError); !isExitError {
+									// Command failed to run entirely (e.g. executable not found)
+									statusCode = 500
+									errMsg = err.Error()
+								}
+							}
+
+							if statusCode == 200 && sampler.OSCheckReturnCode {
+								expectedCodeStr := session.Evaluator.Evaluate(sampler.OSExpectedReturnCode)
+								expectedCode, parseErr := strconv.Atoi(expectedCodeStr)
+								if parseErr != nil {
+									expectedCode = 0 // JMeter default if empty/invalid is 0
+								}
+
+								exitCode := 0
+								if cmd.ProcessState != nil {
+									exitCode = cmd.ProcessState.ExitCode()
+								}
+								if exitCode != expectedCode {
+									statusCode = 500
+									errMsg = fmt.Sprintf("Expected exit code %d but got %d", expectedCode, exitCode)
+								}
+							}
+
+							res = &vegeta.Result{
+								Attack:    attackName,
+								Seq:       uint64(step),
+								Timestamp: start,
+								Latency:   elapsed,
+								Method:    "OS",
+								URL:       cmdStr,
+								Code:      statusCode,
+								Error:     errMsg,
+								BytesIn:   uint64(len(output)),
+							}
+
+							bodyBytes = output
 							session.LastResponseBody = bodyBytes
 
-							if cacheManager != nil && (resp.StatusCode == 200 || resp.StatusCode == 304) {
-								etag := resp.Header.Get("ETag")
-								lastMod := resp.Header.Get("Last-Modified")
-								if etag != "" || lastMod != "" {
-									if len(session.Cache) < cacheManager.MaxSize {
-										session.Cache[reqURL] = &CacheEntry{
-											ETag:         etag,
-											LastModified: lastMod,
+							resp = &http.Response{
+								StatusCode: int(statusCode),
+								Status:     "OK",
+								Header:     make(http.Header),
+							}
+						} else {
+							if len(sampler.Request.Arguments) > 0 {
+								var args []string
+								for _, arg := range sampler.Request.Arguments {
+									k := url.QueryEscape(session.Evaluator.Evaluate(arg[0]))
+									v := url.QueryEscape(session.Evaluator.Evaluate(arg[1]))
+									args = append(args, k+"="+v)
+								}
+								qs := strings.Join(args, "&")
+								if method == "GET" || method == "DELETE" {
+									if strings.Contains(reqURL, "?") {
+										reqURL += "&" + qs
+									} else {
+										reqURL += "?" + qs
+									}
+								} else {
+									if bodyStr != "" {
+										bodyStr += "&" + qs
+									} else {
+										bodyStr = qs
+									}
+								}
+							}
+
+							var bodyReader io.Reader
+							if bodyStr != "" {
+								bodyReader = strings.NewReader(bodyStr)
+							}
+							reqCtx := ctx
+							var cancel context.CancelFunc
+							for _, p := range sampler.PreProcessors {
+								if st, ok := p.(*domain.SampleTimeout); ok {
+									timeoutStr := session.Evaluator.Evaluate(st.Timeout)
+									if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
+										reqCtx, cancel = context.WithTimeout(reqCtx, time.Duration(t)*time.Millisecond)
+									}
+								}
+							}
+
+							req, err = http.NewRequestWithContext(reqCtx, method, reqURL, bodyReader)
+							if err != nil {
+								if cancel != nil {
+									cancel()
+								}
+								// Record a failure result so it appears in the report instead of silently skipping
+								failRes := &vegeta.Result{
+									Attack:    sampler.Name,
+									Seq:       uint64(step),
+									Timestamp: time.Now(),
+									Latency:   0,
+									Method:    method,
+									URL:       reqURL,
+									Error:     fmt.Sprintf("invalid request: %v", err),
+								}
+								select {
+								case results <- failRes:
+								case <-ctx.Done():
+									return
+								}
+								continue
+							}
+
+							// Evaluate headers
+							for k, v := range sampler.Request.Headers {
+								req.Header.Set(k, session.Evaluator.Evaluate(v))
+							}
+
+							if cacheManager != nil {
+								if entry, ok := session.Cache[reqURL]; ok {
+									if entry.ETag != "" {
+										req.Header.Set("If-None-Match", entry.ETag)
+									}
+									if entry.LastModified != "" {
+										req.Header.Set("If-Modified-Since", entry.LastModified)
+									}
+								}
+							}
+
+							if authManager != nil {
+								for _, auth := range authManager.AuthList {
+									authUrl := session.Evaluator.Evaluate(auth.URL)
+									if strings.HasPrefix(reqURL, authUrl) {
+										user := session.Evaluator.Evaluate(auth.Username)
+										pass := session.Evaluator.Evaluate(auth.Password)
+										mech := session.Evaluator.Evaluate(auth.Mechanism)
+										if mech == "" || mech == "BASIC_DIGEST" || mech == "BASIC" {
+											authStr := user + ":" + pass
+											b64 := base64.StdEncoding.EncodeToString([]byte(authStr))
+											req.Header.Set("Authorization", "Basic "+b64)
+										}
+										break
+									}
+								}
+							}
+
+							start := time.Now()
+							resp, err = sessionClient.Do(req)
+							elapsed := time.Since(start)
+							if cancel != nil {
+								cancel()
+							}
+
+							attackName := sampler.Name
+							if sampler.TransactionName != "" && sampler.TransactionParent {
+								attackName = sampler.TransactionName
+							}
+
+							res = &vegeta.Result{
+								Attack:    attackName,
+								Seq:       uint64(step),
+								Timestamp: start,
+								Latency:   elapsed,
+								Method:    method,
+								URL:       reqURL,
+							}
+
+							if err == nil {
+								res.Code = uint16(resp.StatusCode)
+								needsBody := true // Always read body in stateful mode for subsequent PreProcessors (like HTMLLinkParser)
+
+								bufPtr := bufferPool.Get().(*[]byte)
+								buf := *bufPtr
+
+								if needsBody {
+									// Direct use of bytes.Buffer: optimized from 2 copies via strings.Builder to 0 copies
+									var bb bytes.Buffer
+									bb.Grow(4096)
+									// Scale max body size based on worker count to prevent OOM (MEDIUM-23)
+									var maxBodySize int64 = 5 * 1024 * 1024 // 5MB default
+									if a.maxW >= 1000 {
+										maxBodySize = 2 * 1024 * 1024
+									}
+									if a.maxW >= 500 {
+										maxBodySize = 512 * 1024
+									}
+									if !a.needsBody {
+										maxBodySize = 0
+									}
+
+									written, _ := io.CopyBuffer(&bb, io.LimitReader(resp.Body, maxBodySize), buf)
+									if written == maxBodySize {
+										rest, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
+										written += rest
+									}
+									bodyBytes = bb.Bytes()
+									res.BytesIn = uint64(written)
+								} else {
+									written, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
+									res.BytesIn = uint64(written)
+								}
+
+								_ = resp.Body.Close()  // Close first (ensures read is complete)
+								bufferPool.Put(bufPtr) // Then return to Pool
+
+								session.LastResponseBody = bodyBytes
+
+								if cacheManager != nil && (resp.StatusCode == 200 || resp.StatusCode == 304) {
+									etag := resp.Header.Get("ETag")
+									lastMod := resp.Header.Get("Last-Modified")
+									if etag != "" || lastMod != "" {
+										if len(session.Cache) < cacheManager.MaxSize {
+											session.Cache[reqURL] = &CacheEntry{
+												ETag:         etag,
+												LastModified: lastMod,
+											}
 										}
 									}
 								}
+							} else {
+								res.Error = err.Error()
 							}
+						}
 
+						if res.Error == "" || sampler.IsOSProcessSampler {
 							// Execute extractors
 							for _, ext := range sampler.Extractors {
 								if ext == nil {
@@ -1382,9 +1562,6 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 									break // fail fast on first assertion error
 								}
 							}
-
-						} else {
-							res.Error = err.Error()
 						}
 
 						select {
@@ -1408,12 +1585,12 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								return
 							case 2, 3: // Stop Test, Stop Test Now
 								atomic.StoreInt32(&a.stopped, 1)
+								if cancelFn, ok := ctx.Value(domain.CancelTestKey).(context.CancelFunc); ok {
+									cancelFn()
+								}
 								return
 							case 4, 5, 6: // Start Next Thread Loop / Break Loop
-								break
-							}
-							if action >= 4 {
-								break
+								break samplerLoop
 							}
 						}
 					}
