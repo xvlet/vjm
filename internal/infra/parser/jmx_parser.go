@@ -2054,8 +2054,6 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					if currentThreadGroup != nil && inMainControllerElementProp {
 						if v, err := strconv.Atoi(val); err == nil {
 							currentThreadGroup.Loops = v
-						} else if val == "-1" {
-							currentThreadGroup.Loops = -1
 						}
 					}
 				}
