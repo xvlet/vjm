@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -120,6 +121,12 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			tgTotalWeights[i] = current
 		}
 
+		evalPool := sync.Pool{
+			New: func() any {
+				return eval.Clone()
+			},
+		}
+
 		targeter := func(tgt *vegeta.Target) error {
 			if tgt == nil {
 				return vegeta.ErrNilTarget
@@ -151,12 +158,15 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 				return fmt.Errorf("no sampler found")
 			}
 
+			localEval := evalPool.Get().(evaluator.Evaluator)
+			defer evalPool.Put(localEval)
+
 			reqTemplate := sampler.Request
-			evalURL := eval.Evaluate(reqTemplate.URL)
+			evalURL := localEval.Evaluate(reqTemplate.URL)
 			evalURL = strings.ReplaceAll(evalURL, "\n", "%0A")
 			evalURL = strings.ReplaceAll(evalURL, "\r", "%0D")
 			evalURL = strings.ReplaceAll(evalURL, " ", "%20")
-			evalBody := eval.Evaluate(reqTemplate.BodyTemplate)
+			evalBody := localEval.Evaluate(reqTemplate.BodyTemplate)
 
 			tgt.Method = reqTemplate.Method
 			tgt.URL = evalURL
@@ -165,7 +175,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			if len(reqTemplate.Headers) > 0 {
 				tgt.Header = make(http.Header)
 				for k, v := range reqTemplate.Headers {
-					tgt.Header[k] = []string{eval.Evaluate(v)}
+					tgt.Header[k] = []string{localEval.Evaluate(v)}
 				}
 			} else {
 				tgt.Header = nil

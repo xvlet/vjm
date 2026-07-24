@@ -790,7 +790,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					userParamState = "values"
 				case "ultimatethreadgroupdata":
 					inUltimateData = true
-				case "arrivals_schedule":
+				case "Schedule", "arrivals_schedule":
 					inFreeFormData = true
 				case "ModuleController.node_path":
 					inModuleNodePath = true
@@ -1772,10 +1772,6 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				inDNSServers = false
 				inDNSHosts = false
 				userParamState = ""
-				inUltimateData = false
-				inUltimateRow = false
-				inFreeFormData = false
-				inFreeFormRow = false
 				inModuleNodePath = false
 				if inUltimateRow {
 					inUltimateRow = false
@@ -2051,6 +2047,16 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if currentCacheManager != nil && nameAttr == "maxSize" {
 					if v, err := strconv.Atoi(val); err == nil {
 						currentCacheManager.MaxSize = v
+					}
+				}
+				if nameAttr == "LoopController.loops" {
+					pendingLoopCountExpr = val
+					if currentThreadGroup != nil && inMainControllerElementProp {
+						if v, err := strconv.Atoi(val); err == nil {
+							currentThreadGroup.Loops = v
+						} else if val == "-1" {
+							currentThreadGroup.Loops = -1
+						}
 					}
 				}
 				if currentResultAction != nil && nameAttr == "OnError.action" {
