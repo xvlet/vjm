@@ -24,7 +24,9 @@ func TestAccessLogSampler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create mock access.log: %v", err)
 	}
-	defer os.Remove("access.log")
+	defer func() {
+		_ = os.Remove("access.log")
+	}()
 
 	var getCount int32
 	var postCount int32

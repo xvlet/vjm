@@ -57,25 +57,56 @@ flowchart LR
 
 ---
 
-## 지원하지 않는 JMeter 기능 (아키텍처 제약 사항)
+## 테스트 결과 예시
 
-`vjm`은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 기반으로 부하를 발생시킵니다. 하지만 네이티브 Go 언어로 구현된 특성상 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
-
-*   **JVM 종속 요소 (JSR223, BeanShell, JDBC 등)**: `vjm`은 네이티브 애플리케이션이므로 Java 가상 머신(JVM)을 내장하지 않습니다. 따라서 Java 스크립트 실행이나 JDBC 드라이버가 필요한 요소는 지원하지 않습니다.
-
-*(참고: 복잡한 흐름 제어 로직 (If, While, Loop, ForEach Controller 등), Extractor를 활용한 변수 체이닝, HTTP Cookie Manager, 각종 Timer 및 Assertion(검증) 기능 등 필수적인 상태 유지 및 제어 기능들은 `vjm`의 자체적인 Stateful 엔진 모드를 통해 현재 완벽하게 지원됩니다.)*
+![Test Result Demo](demo.gif)
 
 ---
 
-## 사전 요구사항
+## 빠른 시작
 
-`vjm`은 단일 바이너리로 동작하며, 부하 테스트 실행을 위해 사전 설치해야 할 **외부 종속성이 없습니다.**
+### 1. 부하 테스트 실행
 
-| 도구 | 용도 | 설치 확인 |
-|------|------|----------|
-| [Apache JMeter](https://jmeter.apache.org/) | HTML 리포트 생성 (선택) | `$JMETER_HOME/bin/jmeter -v` |
+```bash
+# 기본 실행: JMX 파일 지정, 3000 TPS, 60초, 최대 200 워커
+./vjm -t my_test.jmx -r 3000 -d 60s -w 200
 
-> **참고:** JMeter는 HTML 리포트(`-e` 옵션)를 생성할 때만 필요합니다. 부하 테스트 실행 자체에는 필요하지 않습니다. (Vegeta 엔진은 `vjm` 내부에 라이브러리로 내장되어 있습니다.)
+# properties 파일을 여러 개 로드하여 환경 파라미터 주입
+./vjm -t my_test.jmx \
+      -p common.properties \
+      -p headers.properties \
+      -r 5000 -d 30s -w 300
+
+# 결과 파일 경로를 직접 지정
+./vjm -t my_test.jmx -r 1000 -d 10s -l ./results/my_result.bin
+
+# JMX Thread Group 설정을 무시하고 CLI에서 지정한 rate, duration, worker 옵션으로 강제 실행
+# (예: Stepping Thread Group 등으로 작성된 my_test.jmx의 시나리오를 무시하고 단일 부하를 주입할 때 유용)
+./vjm -t my_test.jmx -r 2000 -d 30s -w 100 -f
+```
+
+### 2. 부하 테스트 + HTML 리포트 동시 생성
+
+```bash
+./vjm -t my_test.jmx \
+      -p common.properties \
+      -r 3000 -d 60s -w 200 \
+      -e ./html-report
+```
+
+실행 후 `./html-report/report_<timestamp>/index.html` 에서 JMeter 대시보드를 확인하세요.
+
+### 3. 기존 결과 파일로 리포트만 생성
+
+이미 `.bin` 또는 `.jtl` 파일이 있는 경우 부하 테스트 없이 리포트만 생성할 수 있습니다.
+
+```bash
+# .bin 파일로 JTL 변환 + HTML 리포트 생성
+./vjm -g results/result_20260701_110632.bin -e ./html-report
+
+# .jtl 파일이 이미 있는 경우: JTL 변환 생략, 리포트만 생성
+./vjm -g results/result_20260701_110632.jtl -e ./html-report
+```
 
 ---
 
@@ -139,82 +170,15 @@ docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t tes
 
 ---
 
-## 빌드
+## 사전 요구사항
 
-```bash
-git clone https://github.com/xvlet/vjm.git
-cd vjm
+`vjm`은 단일 바이너리로 동작하며, 부하 테스트 실행을 위해 사전 설치해야 할 **외부 종속성이 없습니다.**
 
-# 특정 플랫폼 빌드 (예: Linux amd64)
-make linux_amd64
+| 도구 | 용도 | 설치 확인 |
+|------|------|----------|
+| [Apache JMeter](https://jmeter.apache.org/) | HTML 리포트 생성 (선택) | `$JMETER_HOME/bin/jmeter -v` |
 
-# 기타 지원 타겟:
-# linux_arm64, darwin_amd64, darwin_arm64, windows_amd64, windows_arm64, aix_ppc64
-
-# 모든 지원 플랫폼 전체 빌드
-make all
-
-# 빌드 결과물 위치
-ls build/
-# vjm_linux_amd64.tar.gz   vjm_windows_amd64.zip   ...
-```
-
-### 수동 빌드
-
-```bash
-# Linux
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vjm ./cmd/vjm/main.go
-
-# AIX (PowerPC)
-GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o vjm_aix ./cmd/vjm/main.go
-```
-
----
-
-## 빠른 시작
-
-### 1. 부하 테스트 실행
-
-```bash
-# 기본 실행: JMX 파일 지정, 3000 TPS, 60초, 최대 200 워커
-./vjm -t my_test.jmx -r 3000 -d 60s -w 200
-
-# properties 파일을 여러 개 로드하여 환경 파라미터 주입
-./vjm -t my_test.jmx \
-      -p common.properties \
-      -p headers.properties \
-      -r 5000 -d 30s -w 300
-
-# 결과 파일 경로를 직접 지정
-./vjm -t my_test.jmx -r 1000 -d 10s -l ./results/my_result.bin
-
-# JMX Thread Group 설정을 무시하고 CLI에서 지정한 rate, duration, worker 옵션으로 강제 실행
-# (예: Stepping Thread Group 등으로 작성된 my_test.jmx의 시나리오를 무시하고 단일 부하를 주입할 때 유용)
-./vjm -t my_test.jmx -r 2000 -d 30s -w 100 -f
-```
-
-### 2. 부하 테스트 + HTML 리포트 동시 생성
-
-```bash
-./vjm -t my_test.jmx \
-      -p common.properties \
-      -r 3000 -d 60s -w 200 \
-      -e ./html-report
-```
-
-실행 후 `./html-report/report_<timestamp>/index.html` 에서 JMeter 대시보드를 확인하세요.
-
-### 3. 기존 결과 파일로 리포트만 생성
-
-이미 `.bin` 또는 `.jtl` 파일이 있는 경우 부하 테스트 없이 리포트만 생성할 수 있습니다.
-
-```bash
-# .bin 파일로 JTL 변환 + HTML 리포트 생성
-./vjm -g results/result_20260701_110632.bin -e ./html-report
-
-# .jtl 파일이 이미 있는 경우: JTL 변환 생략, 리포트만 생성
-./vjm -g results/result_20260701_110632.jtl -e ./html-report
-```
+> **참고:** JMeter는 HTML 리포트(`-e` 옵션)를 생성할 때만 필요합니다. 부하 테스트 실행 자체에는 필요하지 않습니다. (Vegeta 엔진은 `vjm` 내부에 라이브러리로 내장되어 있습니다.)
 
 ---
 
@@ -348,69 +312,6 @@ testdata=test
 | `${__StringFromFile(file,var)}` | 파일에서 줄을 순차적으로 읽음 (라운드로빈, 스레드 안전) | `${__StringFromFile(data.txt,LINE)}` |
 | `${__regexFunction(...)}` | 정규식 추출 (vjm에서는 기본값 반환; 대신 Regex Extractor 권장) | `${__regexFunction(regex,tmpl,match,def)}` |
 | `${varName}` | 변수 참조 | `${target.host}` |
-
----
-
-## 아키텍처
-
-```
-cmd/vjm/
-└── main.go                  # CLI 엔트리포인트, 플래그 파싱
-
-internal/
-├── domain/
-│   ├── entity.go            # TestConfig, RequestTemplate 도메인 모델
-│   └── plan.go              # TestPlan, ThreadGroup, Sampler 도메인 모델
-│
-├── evaluator/
-│   ├── evaluator.go         # Evaluator 인터페이스
-│   └── jmeter_evaluator.go  # JMeter 함수/변수 평가기 구현
-│
-├── infra/
-│   ├── parser/
-│   │   └── jmx_parser.go    # JMX XML 파서 (SAX 스타일 스트리밍)
-│   ├── vegeta/
-│   │   └── runner.go        # Vegeta 프로세스 실행 및 스트리밍 타겟 공급
-│   └── jmeter/
-│       └── reporter.go      # Vegeta CSV → JTL 변환 / JMeter 리포트 호출
-│
-└── usecase/
-    ├── interfaces.go        # StressTestUsecase, JmxParser 등 포트 인터페이스
-    └── orchestrator.go      # 유스케이스 구현체 (Execute, GenerateReportOnly)
-```
-
----
-
-## AIX 환경 실행
-
-AIX PowerPC 환경에서의 실행 팁입니다.
-
-```bash
-# asyncpreemptoff=1: 구버전 Go에서 AIX 시그널 처리 안정화
-GODEBUG=asyncpreemptoff=1 ./vjm_aix \
-    -t test.jmx \
-    -p common.properties \
-    -r 3000 -d 60s -w 200
-```
-
-### AIX 네트워크 튜닝 권장 설정
-
-대규모 TPS에서 성능을 극대화하려면 root 권한으로 아래 설정을 적용하세요.
-
-```bash
-no -p -o rfc1323=1             # TCP Window Scaling 활성화
-no -p -o tcp_recvspace=262144  # TCP 수신 버퍼 256KB
-no -p -o tcp_sendspace=262144  # TCP 송신 버퍼 256KB
-no -p -o sb_max=4194304        # 소켓 버퍼 최대 4MB
-no -p -o somaxconn=8192        # 소켓 백로그 큐 확장
-no -p -o tcp_ephemeral_low=10241  # 임시 포트 범위 확장
-```
-
----
-
-## 테스트 결과 예시
-
-![Test Result Demo](demo.gif)
 
 ---
 
@@ -576,6 +477,105 @@ no -p -o tcp_ephemeral_low=10241  # 임시 포트 범위 확장
 - ~~[ ] **HTTP Mirror Server**~~ (제외 - GUI 디버깅 전용 로컬 서버)
 - ~~[ ] **HTTP(S) Test Script Recorder**~~ (제외 - GUI 프록시 레코딩 전용)
 - ~~[ ] **Property Display**~~ (제외 - GUI 전용 컴포넌트)
+
+---
+
+## 지원하지 않는 JMeter 기능 (아키텍처 제약 사항)
+
+`vjm`은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 기반으로 부하를 발생시킵니다. 하지만 네이티브 Go 언어로 구현된 특성상 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
+
+*   **JVM 종속 요소 (JSR223, BeanShell, JDBC 등)**: `vjm`은 네이티브 애플리케이션이므로 Java 가상 머신(JVM)을 내장하지 않습니다. 따라서 Java 스크립트 실행이나 JDBC 드라이버가 필요한 요소는 지원하지 않습니다.
+
+*(참고: 복잡한 흐름 제어 로직 (If, While, Loop, ForEach Controller 등), Extractor를 활용한 변수 체이닝, HTTP Cookie Manager, 각종 Timer 및 Assertion(검증) 기능 등 필수적인 상태 유지 및 제어 기능들은 `vjm`의 자체적인 Stateful 엔진 모드를 통해 현재 완벽하게 지원됩니다.)*
+
+---
+
+## 아키텍처
+
+```
+cmd/vjm/
+└── main.go                  # CLI 엔트리포인트, 플래그 파싱
+
+internal/
+├── domain/
+│   ├── entity.go            # TestConfig, RequestTemplate 도메인 모델
+│   └── plan.go              # TestPlan, ThreadGroup, Sampler 도메인 모델
+│
+├── evaluator/
+│   ├── evaluator.go         # Evaluator 인터페이스
+│   └── jmeter_evaluator.go  # JMeter 함수/변수 평가기 구현
+│
+├── infra/
+│   ├── parser/
+│   │   └── jmx_parser.go    # JMX XML 파서 (SAX 스타일 스트리밍)
+│   ├── vegeta/
+│   │   └── runner.go        # Vegeta 프로세스 실행 및 스트리밍 타겟 공급
+│   └── jmeter/
+│       └── reporter.go      # Vegeta CSV → JTL 변환 / JMeter 리포트 호출
+│
+└── usecase/
+    ├── interfaces.go        # StressTestUsecase, JmxParser 등 포트 인터페이스
+    └── orchestrator.go      # 유스케이스 구현체 (Execute, GenerateReportOnly)
+```
+
+---
+
+## 빌드
+
+```bash
+git clone https://github.com/xvlet/vjm.git
+cd vjm
+
+# 특정 플랫폼 빌드 (예: Linux amd64)
+make linux_amd64
+
+# 기타 지원 타겟:
+# linux_arm64, darwin_amd64, darwin_arm64, windows_amd64, windows_arm64, aix_ppc64
+
+# 모든 지원 플랫폼 전체 빌드
+make all
+
+# 빌드 결과물 위치
+ls build/
+# vjm_linux_amd64.tar.gz   vjm_windows_amd64.zip   ...
+```
+
+### 수동 빌드
+
+```bash
+# Linux
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vjm ./cmd/vjm/main.go
+
+# AIX (PowerPC)
+GOOS=aix GOARCH=ppc64 GOPPC64=power8 CGO_ENABLED=0 go build -ldflags="-w" -o vjm_aix ./cmd/vjm/main.go
+```
+
+---
+
+## AIX 환경 실행
+
+AIX PowerPC 환경에서의 실행 팁입니다.
+
+```bash
+# asyncpreemptoff=1: 구버전 Go에서 AIX 시그널 처리 안정화
+GODEBUG=asyncpreemptoff=1 ./vjm_aix \
+    -t test.jmx \
+    -p common.properties \
+    -r 3000 -d 60s -w 200
+```
+
+### AIX 네트워크 튜닝 권장 설정
+
+대규모 TPS에서 성능을 극대화하려면 root 권한으로 아래 설정을 적용하세요.
+
+```bash
+no -p -o rfc1323=1             # TCP Window Scaling 활성화
+no -p -o tcp_recvspace=262144  # TCP 수신 버퍼 256KB
+no -p -o tcp_sendspace=262144  # TCP 송신 버퍼 256KB
+no -p -o sb_max=4194304        # 소켓 버퍼 최대 4MB
+no -p -o somaxconn=8192        # 소켓 백로그 큐 확장
+no -p -o tcp_ephemeral_low=10241  # 임시 포트 범위 확장
+```
 
 ---
 
