@@ -156,21 +156,22 @@ type RandomVariable struct {
 
 // TestPlan represents the top-level JMeter test plan
 type TestPlan struct {
-	Name                 string
-	UserDefinedVariables map[string]string // UDV or User Parameters at Test Plan level
-	CSVDataSets          []*CSVDataSet
-	ResultCollectors     []*ResultCollector
-	ResultSavers         []*ResultSaver
-	Summarisers          []*Summariser
-	BackendListeners     []*BackendListener
-	CookieManager        *CookieManager
-	CacheManager         *CacheManager
-	DNSCacheManager      *DNSCacheManager
-	AuthManager          *AuthManager
-	Counters             []*Counter
-	RandomVariables      []*RandomVariable
-	ThroughputTimers     []*ThroughputTimer
-	ThreadGroups         []*ThreadGroup
+	Name                  string
+	SerializeThreadGroups bool
+	UserDefinedVariables  map[string]string // UDV or User Parameters at Test Plan level
+	CSVDataSets           []*CSVDataSet
+	ResultCollectors      []*ResultCollector
+	ResultSavers          []*ResultSaver
+	Summarisers           []*Summariser
+	BackendListeners      []*BackendListener
+	CookieManager         *CookieManager
+	CacheManager          *CacheManager
+	DNSCacheManager       *DNSCacheManager
+	AuthManager           *AuthManager
+	Counters              []*Counter
+	RandomVariables       []*RandomVariable
+	ThroughputTimers      []*ThroughputTimer
+	ThreadGroups          []*ThreadGroup
 }
 
 // ConcurrencyConfig represents the properties of a bzm - Concurrency Thread Group.
@@ -227,9 +228,12 @@ type FreeFormArrivalsConfig struct {
 type ThreadGroup struct {
 	Name                   string
 	ActionType             string // "setup", "main", "teardown"
+	OnSampleError          int    // 0: continue, 1: stopthread, 2: stoptest, 3: stoptestnow, 4: startnextloop, 5: breakloop (mapped to ResultAction codes)
 	NumThreads             int    // Number of threads to run
 	RampUp                 int    // Seconds to ramp up to full load
+	Scheduler              bool   // Parsed from ThreadGroup.scheduler
 	Duration               int    // Total duration of the test
+	Delay                  int    // Startup delay in seconds
 	Loops                  int    // Parsed from LoopController.loops
 	ContinueForever        bool   // Parsed from LoopController.continue_forever
 	Samplers               []*Sampler

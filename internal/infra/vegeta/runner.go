@@ -80,10 +80,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		errCh := make(chan error, len(groups))
 
 		for _, tg := range groups {
-			wg.Add(1)
-			go func(idx int, threadGrp *domain.ThreadGroup) {
-				defer wg.Done()
-
+			runTg := func(idx int, threadGrp *domain.ThreadGroup) error {
 				tgs := []*domain.ThreadGroup{threadGrp}
 				tgs = append(tgs, fragments...)
 
@@ -109,22 +106,37 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 				tgRunner := threadgroup.GetRunner(threadGrp)
 
 				if err := tgRunner.Run(ctx, subPlan, &subConfig, eval.Clone()); err != nil {
-					errCh <- err
-				} else {
-					pathMu.Lock()
-					tgPaths = append(tgPaths, subConfig.ResultBinPath)
-					pathMu.Unlock()
+					return err
 				}
-			}(tgIdx, tg)
+				pathMu.Lock()
+				tgPaths = append(tgPaths, subConfig.ResultBinPath)
+				pathMu.Unlock()
+				return nil
+			}
+
+			if plan.SerializeThreadGroups {
+				if err := runTg(tgIdx, tg); err != nil {
+					return err
+				}
+			} else {
+				wg.Add(1)
+				go func(idx int, threadGrp *domain.ThreadGroup) {
+					defer wg.Done()
+					if err := runTg(idx, threadGrp); err != nil {
+						errCh <- err
+					}
+				}(tgIdx, tg)
+			}
 			tgIdx++
 		}
 
-		wg.Wait()
-		close(errCh)
-
-		for err := range errCh {
-			if err != nil {
-				return err
+		if !plan.SerializeThreadGroups {
+			wg.Wait()
+			close(errCh)
+			for err := range errCh {
+				if err != nil {
+					return err
+				}
 			}
 		}
 		return nil

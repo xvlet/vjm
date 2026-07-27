@@ -587,7 +587,9 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "com.blazemeter.jmeter.threads.arrivals.FreeFormArrivalsThreadGroup":
 					currentThreadGroup.FreeFormArrivalsConfig = &domain.FreeFormArrivalsConfig{}
 				}
-				plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
+				if enabledAttr != "false" {
+					plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
+				}
 				lastCompletedReq = nil
 			} else if currentTag == "DebugSampler" {
 				activeIfCondition := ""
@@ -1843,6 +1845,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "boolProp":
+				if nameAttr == "TestPlan.serialize_threadgroups" {
+					plan.SerializeThreadGroups = (val == "true")
+				}
+				if nameAttr == "ThreadGroup.scheduler" && currentThreadGroup != nil {
+					currentThreadGroup.Scheduler = (val == "true")
+				}
 				if currentDebugSampler != nil {
 					switch nameAttr {
 					case "displayJMeterVariables":
@@ -1875,6 +1883,12 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				}
 				if nameAttr == "HTTPSampler.postBodyRaw" && val == "true" {
 					postBodyRaw = true
+				}
+				if currentReq != nil {
+					switch nameAttr {
+					case "HTTPSampler.follow_redirects", "HTTPSampler.auto_redirects":
+						currentReq.FollowRedirects = (val == "true")
+					}
 				}
 				if currentURLRewritingModifier != nil {
 					switch nameAttr {
@@ -2116,6 +2130,32 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					}
 				}
 			case "stringProp":
+				if currentThreadGroup != nil {
+					if nameAttr == "ThreadGroup.on_sample_error" {
+						switch val {
+						case "stopthread":
+							currentThreadGroup.OnSampleError = 1
+						case "stoptest":
+							currentThreadGroup.OnSampleError = 2
+						case "stoptestnow":
+							currentThreadGroup.OnSampleError = 3
+						case "startnextloop":
+							currentThreadGroup.OnSampleError = 4
+						default:
+							currentThreadGroup.OnSampleError = 0 // continue
+						}
+					}
+					if nameAttr == "ThreadGroup.duration" {
+						if v, err := strconv.Atoi(val); err == nil {
+							currentThreadGroup.Duration = v
+						}
+					}
+					if nameAttr == "ThreadGroup.delay" {
+						if v, err := strconv.Atoi(val); err == nil {
+							currentThreadGroup.Delay = v
+						}
+					}
+				}
 				if currentTestAction != nil {
 					if nameAttr == "ActionProcessor.duration" {
 						currentTestAction.TestActionDuration = val

@@ -21,9 +21,10 @@ type TestConfig struct {
 
 // RequestTemplate represents the extracted HTTP request information from the JMX file
 type RequestTemplate struct {
-	Method       string
-	URL          string
-	Headers      map[string]string
-	BodyTemplate string
-	Arguments    [][2]string
+	Method          string
+	URL             string
+	Headers         map[string]string
+	BodyTemplate    string
+	Arguments       [][2]string
+	FollowRedirects bool
 }

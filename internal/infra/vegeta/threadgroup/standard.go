@@ -60,7 +60,18 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 				}
 			}
 
-			if !tg.ContinueForever && tg.Loops > 0 {
+			if tg.Scheduler {
+				if tg.Delay > 0 {
+					select {
+					case <-time.After(time.Duration(tg.Delay) * time.Second):
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+				if tg.Duration > 0 {
+					dur = time.Duration(tg.Duration) * time.Second
+				}
+			} else if !tg.ContinueForever && tg.Loops > 0 {
 				dur = 0 // Run until thread iteration limits are reached
 			}
 		}

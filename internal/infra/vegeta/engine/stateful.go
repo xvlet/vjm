@@ -8,6 +8,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -635,10 +636,20 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				}
 
 				wsTransport := NewWSRoundTripper(a.transport)
+				currentFollowRedirects := true
 				sessionClient := &http.Client{
 					Transport: wsTransport,
 					Timeout:   30 * time.Second,
 					Jar:       createCookieJar(),
+					CheckRedirect: func(req *http.Request, via []*http.Request) error {
+						if !currentFollowRedirects {
+							return http.ErrUseLastResponse
+						}
+						if len(via) >= 10 {
+							return errors.New("stopped after 10 redirects")
+						}
+						return nil
+					},
 				}
 
 				// [PERF] Calculate allRVs once outside the loop (removes heap allocation per iteration)
@@ -1455,6 +1466,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								}
 							}
 
+							currentFollowRedirects = sampler.Request.FollowRedirects
+
 							start := time.Now()
 							resp, err = sessionClient.Do(req)
 							elapsed := time.Since(start)
@@ -1601,7 +1614,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 						// Evaluate Result Status Action Handler
 						if res.Code >= 400 || res.Error != "" {
-							action := 0
+							action := session.Tg.OnSampleError
 							for _, ext := range sampler.Extractors {
 								if ra, ok := ext.(*domain.ResultAction); ok {
 									action = ra.Action
