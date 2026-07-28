@@ -24,8 +24,10 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
-    - name: Run go vet
-      run: go vet ./...
+    - name: Install and Run golangci-lint
+      run: |
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        golangci-lint run --timeout=5m
 
     - name: Run tests
       run: go test -v -race ./...
