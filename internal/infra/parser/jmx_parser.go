@@ -587,7 +587,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "com.blazemeter.jmeter.threads.arrivals.FreeFormArrivalsThreadGroup":
 					currentThreadGroup.FreeFormArrivalsConfig = &domain.FreeFormArrivalsConfig{}
 				}
-				if enabledAttr != "false" {
+				if enabledAttr != "false" || currentTag == "TestFragmentController" {
 					plan.ThreadGroups = append(plan.ThreadGroups, currentThreadGroup)
 				}
 				lastCompletedReq = nil
