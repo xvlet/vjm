@@ -11,9 +11,23 @@ export GOTOOLCHAIN=auto
 MKDOCDIR = mkdir -p
 SBOM_DIR = build
 
-.PHONY: all clean check docs linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 windows_amd64 windows_arm64 aix_ppc64
+STAGING_DIR = build_staging
 
-all: clean linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 windows_amd64 windows_arm64 aix_ppc64
+.PHONY: all build clean check docs release linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 windows_amd64 windows_arm64 aix_ppc64
+
+all: build
+
+build: clean
+	@echo "Starting build process in staging directory: $(STAGING_DIR)..."
+	@rm -rf $(STAGING_DIR)
+	@mkdir -p $(STAGING_DIR)
+	@echo "Performing Go build (CGO_ENABLED=0)..."
+	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o $(STAGING_DIR)/$(APP_NAME) $(CMD_PATH)
+	@echo "Build successful. Finalizing build directory..."; \
+	rm -rf $(BASE_DIR); \
+	mv $(STAGING_DIR) $(BASE_DIR)
+
+release: clean linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 windows_amd64 windows_arm64 aix_ppc64
 
 linux_amd64:
 	@echo "Building for linux/amd64..."
@@ -72,7 +86,7 @@ aix_ppc64:
 	@rm -rf build_staging_$@
 
 clean:
-	rm -rf $(BASE_DIR) build_staging_*
+	rm -rf $(BASE_DIR) $(STAGING_DIR) build_staging_*
 
 check:
 	golangci-lint run

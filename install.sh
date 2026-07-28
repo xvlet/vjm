@@ -30,7 +30,13 @@ main() {
         x86_64|amd64)   arch="amd64" ;;
         aarch64|arm64)  arch="arm64" ;;
         ppc64*)         arch="ppc64" ;;
-        *)              err "unsupported architecture: $ARCH" ;;
+        *)              
+            if [ "$os" = "aix" ]; then
+                arch="ppc64"
+            else
+                err "unsupported architecture: $ARCH"
+            fi
+            ;;
     esac
 
     log "detected ${os}/${arch}"
@@ -40,6 +46,7 @@ main() {
     need grep
     need sed
     need tar
+    need gzip
 
     TARGET="${os}_${arch}"
     log "fetching latest release manifest..."
@@ -48,10 +55,10 @@ main() {
         || err "can't reach GitHub API. Please try again later."
     
     # Extract version
-    VERSION="$(echo "$MANIFEST" | grep '"tag_name":' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
+    VERSION="$(echo "$MANIFEST" | grep '"tag_name":' | head -n 1 | sed 's/.*"\([^"]*\)".*/\1/')"
     
     # Extract asset URL for the target platform (.tar.gz is assumed for releases)
-    URL="$(echo "$MANIFEST" | grep '"browser_download_url":' | grep -i "$TARGET" | grep '\.tar\.gz' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
+    URL="$(echo "$MANIFEST" | grep '"browser_download_url":' | grep -i "$TARGET" | grep '\.tar\.gz' | head -n 1 | sed 's/.*"\([^"]*\)".*/\1/')"
 
     if [ -z "$URL" ]; then
         err "release manifest does not include a binary for ${TARGET}"
@@ -66,13 +73,13 @@ main() {
     fi
 
     log "extracting..."
-    tar -xzf "${TMP}/${BIN}.tar.gz" -C "$TMP" || err "extraction failed"
+    gzip -dc "${TMP}/${BIN}.tar.gz" | tar -xf - -C "$TMP" || err "extraction failed"
 
     # install
     mkdir -p "$INSTALL_DIR"
     
     # Sometimes binary is inside a folder, find it
-    BIN_PATH="$(find "$TMP" -type f -name "$BIN" -print -quit)"
+    BIN_PATH="$(find "$TMP" -type f -name "$BIN" -print | head -n 1)"
     if [ -z "$BIN_PATH" ]; then
         err "could not find ${BIN} binary in the extracted archive"
     fi
@@ -114,4 +121,4 @@ need() {
     fi
 }
 
-main "$@"
+main ${1+"$@"}
