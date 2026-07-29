@@ -59,7 +59,14 @@ flowchart LR
 
 ## 테스트 결과 예시
 
-![Test Result Demo](demo.gif)
+<video src="https://github.com/xvlet/vjm/raw/master/demo.mp4" autoplay loop muted playsinline width="80%"></video>
+
+---
+
+## 연관 프로젝트: echosvr
+
+`vjm`을 테스트하기 위한 대상(Target) 백엔드 서버가 필요하다면 [echosvr](https://github.com/xvlet/echosvr)를 활용할 수 있습니다.
+HTTP 및 WebSocket 엔드포인트, 응답 지연(Latency) 시뮬레이션, 에러 응답, 커스텀 헤더 등을 지원하는 경량 목(Mock) 서버입니다.
 
 ---
 
@@ -68,13 +75,16 @@ flowchart LR
 ### 1. 부하 테스트 실행
 
 ```bash
-# 기본 실행: JMX 파일 지정, 3000 TPS, 60초, 최대 200 워커
+# 가장 기본적인 실행: 기본 설정(1000 TPS, 30초)으로 실행
+./vjm -t my_test.jmx
+
+# TPS, 수행 시간, 최대 워커 수 등 세부 옵션 지정
 ./vjm -t my_test.jmx -r 3000 -d 60s -w 200
 
-# properties 파일을 여러 개 로드하여 환경 파라미터 주입
+# 시나리오(JMX) 내에서 사용할 외부 변수(properties) 주입 시
 ./vjm -t my_test.jmx \
-      -p common.properties \
-      -p headers.properties \
+      -p sample1.properties \
+      -p sample2.properties \
       -r 5000 -d 30s -w 300
 
 # 결과 파일 경로를 직접 지정
@@ -89,12 +99,12 @@ flowchart LR
 
 ```bash
 ./vjm -t my_test.jmx \
-      -p common.properties \
       -r 3000 -d 60s -w 200 \
       -e ./html-report
 ```
 
 실행 후 `./html-report/report_<timestamp>/index.html` 에서 JMeter 대시보드를 확인하세요.
+> **주의:** `-e` 옵션으로 HTML 리포트를 생성하려면 시스템에 Apache JMeter가 설치되어 있어야 합니다. (부하 테스트 실행 자체에는 필요하지 않습니다.)
 
 ### 3. 기존 결과 파일로 리포트만 생성
 
@@ -112,7 +122,7 @@ flowchart LR
 
 ## 설치
 
-사용자의 환경에 맞춰 아래 두 가지 방법 중 하나로 설치할 수 있습니다. `vjm` 바이너리는 의존성 문제 없이 독립적으로 실행될 수 있도록 정적 링킹(Statically Linked, `CGO_ENABLED=0`) 방식으로 배포됩니다.
+사용자의 환경에 맞춰 아래 방법 중 하나로 설치할 수 있습니다.
 
 ### 1. Homebrew (macOS / Linux)
 가장 권장하는 방식으로, Homebrew를 통해 손쉽게 설치할 수 있습니다:
@@ -162,10 +172,10 @@ docker run --rm ghcr.io/xvlet/vjm -h
 **주의:** 부하 테스트 리포트와 로그는 정확한 타임스탬프가 필수적이므로, `-e TZ` 환경 변수를 사용해 컨테이너의 시간대를 호스트(예: 한국 시간)와 맞추는 것을 강력히 권장합니다.
 ```bash
 # Linux/macOS 환경
-docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
+docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t my_test.jmx
 
 # Windows (PowerShell) 환경
-docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
+docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t my_test.jmx
 ```
 
 ---
@@ -203,7 +213,7 @@ Options:
 
   -p string
         .properties 파일 경로. 여러 번 지정 가능
-        예: -p common.properties -p headers.properties
+        예: -p sample1.properties -p sample2.properties
 
   -l string
         결과 바이너리(.bin) 저장 경로.
@@ -249,9 +259,10 @@ html-report/
 ## .properties 파일 형식
 
 JMeter 표준 properties 파일 형식을 그대로 사용합니다.
+*(여러 파일을 지정할 경우 순차적으로 로드되며, 중복된 키가 있을 경우 나중에 로드된 파일의 값으로 덮어씁니다.)*
 
 ```properties
-# common.properties
+# sample1.properties
 target.host=127.0.0.1
 target.port=9998
 target.path=/api/v1/testapi
@@ -260,10 +271,10 @@ target.path=/api/v1/testapi
 ```
 
 ```properties
-# headers.properties
-http-header-name1=HEADER-DATA-1
-someheader=somedata
-testdata=test
+# sample2.properties
+api.key=AKIAIOSFODNN7EXAMPLE
+auth.token=eyJhbGciOiJIUzI1NiIsInR...
+test.user.id=tester_001
 ```
 
 ---
@@ -271,6 +282,10 @@ testdata=test
 ## JMeter 함수 지원
 
 `.jmx` 파일 내에서 사용하는 JMeter 표준 함수들을 평가합니다.
+
+<details>
+<summary><b>지원되는 JMeter 함수 전체 목록 보기 (클릭하여 펼치기)</b></summary>
+
 
 | 함수 | 설명 | 예시 |
 |------|------|------|
@@ -313,6 +328,8 @@ testdata=test
 | `${__regexFunction(...)}` | 정규식 추출 (vjm에서는 기본값 반환; 대신 Regex Extractor 권장) | `${__regexFunction(regex,tmpl,match,def)}` |
 | `${varName}` | 변수 참조 | `${target.host}` |
 
+</details>
+
 ---
 
 ## 로드맵
@@ -324,6 +341,9 @@ testdata=test
 - [x] **JMeter CSV DataSet 지원**: `CSVDataSet`에서 요청별 다른 파라미터 주입
 - [x] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
 - [x] **실시간 콘솔 대시보드**: 테스트 진행 중 실시간 TPS / 응답시간 모니터링
+
+<details>
+<summary><b>상세 컴포넌트 지원 현황 보기 (클릭하여 펼치기)</b></summary>
 
 ### Samplers
 - [x] **Flow Control Action**
@@ -478,6 +498,8 @@ testdata=test
 - ~~[ ] **HTTP(S) Test Script Recorder**~~ (제외 - GUI 프록시 레코딩 전용)
 - ~~[ ] **Property Display**~~ (제외 - GUI 전용 컴포넌트)
 
+</details>
+
 ---
 
 ## 지원하지 않는 JMeter 기능 (아키텍처 제약 사항)
@@ -560,7 +582,7 @@ AIX PowerPC 환경에서의 실행 팁입니다.
 # asyncpreemptoff=1: 구버전 Go에서 AIX 시그널 처리 안정화
 GODEBUG=asyncpreemptoff=1 ./vjm_aix \
     -t test.jmx \
-    -p common.properties \
+    -p sample1.properties \
     -r 3000 -d 60s -w 200
 ```
 
