@@ -60,7 +60,14 @@ flowchart LR
 
 ## Test Result Example
 
-![Test Result Demo](demo.gif)
+<img src="https://raw.githubusercontent.com/xvlet/vjm/master/demo.gif" width="80%">
+
+---
+
+## Companion Tool: echosvr
+
+If you need a target backend to test `vjm`, you can use [echosvr](https://github.com/xvlet/echosvr). 
+It is a lightweight mock server that supports HTTP and WebSocket endpoints, simulated latency, error responses, and custom headers.
 
 ---
 
@@ -69,13 +76,16 @@ flowchart LR
 ### 1. Run a Load Test
 
 ```bash
-# Basic run: Specify JMX file, 3000 TPS, 60 seconds, max 200 workers
+# Basic run: Execute with default settings (1000 TPS, 30 seconds)
+./vjm -t my_test.jmx
+
+# Run with specific TPS, duration, and max workers
 ./vjm -t my_test.jmx -r 3000 -d 60s -w 200
 
-# Inject environment parameters by loading multiple properties files
+# Inject external variables when the JMX scenario requires custom properties
 ./vjm -t my_test.jmx \
-      -p common.properties \
-      -p headers.properties \
+      -p sample1.properties \
+      -p sample2.properties \
       -r 5000 -d 30s -w 300
 
 # Specify custom result file path
@@ -90,12 +100,12 @@ flowchart LR
 
 ```bash
 ./vjm -t my_test.jmx \
-      -p common.properties \
       -r 3000 -d 60s -w 200 \
       -e ./html-report
 ```
 
 After execution, check the JMeter dashboard at `./html-report/report_<timestamp>/index.html`.
+> **Note:** To generate HTML reports using the `-e` option, Apache JMeter must be installed on your system. (Load testing itself does not require JMeter).
 
 ### 3. Generate Report from Existing Results
 
@@ -113,7 +123,7 @@ If you already have a `.bin` or `.jtl` file, you can generate a report without r
 
 ## Installation
 
-You can install `vjm` using one of the following methods. The `vjm` binary is distributed as a statically linked executable (`CGO_ENABLED=0`), ensuring it runs independently without any external dependency issues.
+You can install `vjm` using one of the following methods.
 
 ### 1. Homebrew (macOS / Linux)
 You can easily install `vjm` using Homebrew via our custom tap:
@@ -163,10 +173,10 @@ To run a load test, you need to mount your local directory (where your `.jmx` fi
 **Note:** Since load test reports and logs require accurate timestamps, it is highly recommended to mount your host's timezone by passing the `-e TZ` environment variable:
 ```bash
 # On Linux/macOS
-docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
+docker run --rm -v $(pwd):/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t my_test.jmx
 
-# On Windows (PowerShell)
-docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t test.jmx
+# Windows (PowerShell) Environment
+docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t my_test.jmx
 ```
 
 ---
@@ -204,7 +214,7 @@ Options:
 
   -p string
         Path to .properties file. Can be specified multiple times
-        e.g., -p common.properties -p headers.properties
+        e.g., -p sample1.properties -p sample2.properties
 
   -l string
         Path to save the result binary (.bin).
@@ -250,9 +260,10 @@ html-report/
 ## .properties File Format
 
 Uses the standard JMeter properties file format.
+*(If multiple `-p` options are specified, they are loaded sequentially. Duplicate keys will be overwritten by the values in the later files.)*
 
 ```properties
-# common.properties
+# sample1.properties
 target.host=127.0.0.1
 target.port=9998
 target.path=/api/v1/testapi
@@ -261,10 +272,10 @@ target.path=/api/v1/testapi
 ```
 
 ```properties
-# headers.properties
-http-header-name1=HEADER-DATA-1
-someheader=somedata
-testdata=test
+# sample2.properties
+api.key=AKIAIOSFODNN7EXAMPLE
+auth.token=eyJhbGciOiJIUzI1NiIsInR...
+test.user.id=tester_001
 ```
 
 ---
@@ -272,6 +283,10 @@ testdata=test
 ## JMeter Function Support
 
 Evaluates standard JMeter functions used within the `.jmx` file.
+
+<details>
+<summary><b>Click to expand the full list of supported JMeter functions</b></summary>
+
 
 | Function | Description | Example |
 |----------|-------------|---------|
@@ -314,6 +329,8 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 | `${__regexFunction(...)}` | Regex extraction (returns default value in vjm; use Regex Extractor instead) | `${__regexFunction(regex,tmpl,match,def)}` |
 | `${varName}` | Variable reference | `${target.host}` |
 
+</details>
+
 ---
 
 ## Roadmap
@@ -325,6 +342,9 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 - [x] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
 - [x] **WebSocket Support**: Integration for WS protocol load testing
 - [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
+
+<details>
+<summary><b>Click to view detailed component support status</b></summary>
 
 ### Samplers
 - [x] **Flow Control Action**
@@ -479,6 +499,8 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 - ~~[ ] **HTTP(S) Test Script Recorder**~~ (Excluded - GUI proxy recorder)
 - ~~[ ] **Property Display**~~ (Excluded - GUI component)
 
+</details>
+
 ---
 
 ## Unsupported JMeter Features (Architectural Limitations)
@@ -561,7 +583,7 @@ Execution tips for the AIX PowerPC environment.
 # asyncpreemptoff=1: Stabilizes AIX signal handling in older Go versions
 GODEBUG=asyncpreemptoff=1 ./vjm_aix \
     -t test.jmx \
-    -p common.properties \
+    -p sample1.properties \
     -r 3000 -d 60s -w 200
 ```
 
