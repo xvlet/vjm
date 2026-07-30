@@ -59,7 +59,7 @@ flowchart LR
 
 ## 테스트 결과 예시
 
-<video src="https://github.com/xvlet/vjm/raw/master/demo.mp4" autoplay loop muted playsinline width="80%"></video>
+<img src="https://raw.githubusercontent.com/xvlet/vjm/master/demo.gif" width="80%">
 
 ---
 
