@@ -59,7 +59,7 @@ flowchart LR
 
 ## 테스트 결과 예시
 
-<img src="https://raw.githubusercontent.com/xvlet/vjm/master/demo.gif" width="80%">
+<img src="https://raw.githubusercontent.com/xvlet/vjm/master/demo.gif" width="100%">
 
 ---
 
