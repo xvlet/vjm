@@ -355,6 +355,10 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 	go func() {
 		defer close(results)
+		// httpCtx: preserved before the duration timeout is applied.
+		// HTTP requests use this so in-flight requests are not forcibly
+		// cancelled when the test duration expires; they complete naturally.
+		httpCtx := ctx
 		var cancel context.CancelFunc
 		if a.dur > 0 {
 			ctx, cancel = context.WithTimeout(ctx, a.dur)
@@ -1399,7 +1403,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 							if bodyStr != "" {
 								bodyReader = strings.NewReader(bodyStr)
 							}
-							reqCtx := ctx
+							reqCtx := httpCtx // use httpCtx: not bound to duration timeout
 							var cancel context.CancelFunc
 							for _, p := range sampler.PreProcessors {
 								if st, ok := p.(*domain.SampleTimeout); ok {
@@ -1427,7 +1431,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								}
 								select {
 								case results <- failRes:
-								case <-ctx.Done():
+								case <-httpCtx.Done():
 									return
 								}
 								continue
@@ -1608,7 +1612,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 						select {
 						case results <- res:
-						case <-ctx.Done():
+						case <-httpCtx.Done(): // only drop result on explicit stop, not duration expiry
 							return
 						}
 
