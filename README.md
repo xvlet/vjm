@@ -60,7 +60,7 @@ flowchart LR
 
 ## Test Result Example
 
-<img src="https://raw.githubusercontent.com/xvlet/vjm/master/demo.gif" width="80%">
+<img src="https://raw.githubusercontent.com/xvlet/vjm/master/demo.gif" width="100%">
 
 ---
 
