@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -257,7 +258,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 					enabledAttr = attr.Value
 				}
 			}
-			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || currentTag == "GraphQLHTTPSamplerProxy" || currentTag == "TestAction" || currentTag == "DebugSampler" || currentTag == "AccessLogSampler" || currentTag == "SystemSampler" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController" || currentTag == "TestFragmentController" || currentTag == "TestPlan") {
+			if testNameAttr != "" && (currentTag == "HTTPSamplerProxy" || currentTag == "GraphQLHTTPSamplerProxy" || currentTag == "TestAction" || currentTag == "DebugSampler" || currentTag == "AccessLogSampler" || currentTag == "SystemSampler" || strings.HasSuffix(currentTag, "ThreadGroup") || currentTag == "ThroughputController" || currentTag == "TransactionController" || currentTag == "TestFragmentController" || currentTag == "TestPlan" || strings.Contains(currentTag, "SSESampler")) {
 				nameAttr = testNameAttr
 			}
 
@@ -734,7 +735,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				if currentThreadGroup != nil {
 					appendSamplers(currentTestAction)
 				}
-			} else if currentTag == "HTTPSamplerProxy" || currentTag == "GraphQLHTTPSamplerProxy" || strings.Contains(currentTag, "WebSocketSampler") {
+			} else if currentTag == "HTTPSamplerProxy" || currentTag == "GraphQLHTTPSamplerProxy" || strings.Contains(currentTag, "WebSocketSampler") || strings.Contains(currentTag, "SSESampler") {
 				activeIfCondition := ""
 				var conditions []string
 				for d := 1; d <= hashTreeDepth; d++ {
@@ -766,6 +767,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 						IfCondition:       activeIfCondition,
 						TransactionName:   activeTransactionName,
 						TransactionParent: activeTransactionParent,
+						IsSSESampler:      strings.Contains(currentTag, "SSESampler"),
 					})
 				}
 				// Reset sampler-specific URL parts
@@ -1701,7 +1703,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				currentTestAction = nil
 			} else if se.Name.Local == "ConstantTimer" || se.Name.Local == "UniformRandomTimer" {
 				currentTimer = nil
-			} else if (se.Name.Local == "HTTPSamplerProxy" || se.Name.Local == "GraphQLHTTPSamplerProxy" || strings.Contains(se.Name.Local, "WebSocketSampler")) && currentReq != nil {
+			} else if (se.Name.Local == "HTTPSamplerProxy" || se.Name.Local == "GraphQLHTTPSamplerProxy" || strings.Contains(se.Name.Local, "WebSocketSampler") || strings.Contains(se.Name.Local, "SSESampler")) && currentReq != nil {
 				// Build the URL now. Keep currentReq alive so the following
 				// HeaderManager (inside sibling hashTree) can still attach headers.
 				pcol := protocolVal
@@ -1734,7 +1736,7 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				urlStr += pth
 				currentReq.URL = urlStr
 
-				if se.Name.Local == "GraphQLHTTPSamplerProxy" {
+				if se.Name.Local == "GraphQLHTTPSamplerProxy" || graphQLQuery != "" {
 					bodyMap := map[string]interface{}{
 						"query": graphQLQuery,
 					}
@@ -2261,6 +2263,21 @@ func (p *DefaultJmxParser) Parse(filePath string) (*domain.TestPlan, error) {
 				case "throughput":
 					if currentThroughputTimer != nil {
 						currentThroughputTimer.Throughput = val
+					}
+				case "SSESampler.url":
+					u, err := url.Parse(val)
+					if err == nil {
+						if u.Scheme == "https" || u.Scheme == "sses" {
+							protocolVal = "sses"
+						} else {
+							protocolVal = "sse"
+						}
+						domainVal = u.Hostname()
+						portVal = u.Port()
+						pathVal = u.Path
+						if u.RawQuery != "" {
+							pathVal += "?" + u.RawQuery
+						}
 					}
 				case "HTTPSampler.protocol":
 					if inConfigTestElement {

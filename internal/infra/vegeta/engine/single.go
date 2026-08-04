@@ -29,7 +29,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			isStateful = true
 		}
 		for _, s := range tg.Samplers {
-			if len(s.Extractors) > 0 || s.IsControlFlow {
+			if len(s.Extractors) > 0 || s.IsControlFlow || s.IsSSESampler {
 				isStateful = true
 				break
 			}
