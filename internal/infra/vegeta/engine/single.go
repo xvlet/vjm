@@ -249,7 +249,7 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			if res.Error != "" || res.Code >= 400 || res.Code == 0 {
 				intervalErrors.Add(1)
 				if intervalErrors.Load() == 1 {
-					log.Printf("[DEBUG] First error encountered: code=%d, err=%s, url=%s", res.Code, res.Error, res.URL)
+					log.Printf("[DEBUG] Error sample: code=%d, err=%s, url=%s", res.Code, res.Error, res.URL)
 				}
 			}
 
