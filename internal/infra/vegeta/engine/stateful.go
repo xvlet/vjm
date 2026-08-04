@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/antchfx/xmlquery"
@@ -273,6 +274,15 @@ func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration, 
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
+			Control: func(network, address string, c syscall.RawConn) error {
+				var errLinger error
+				if err := c.Control(func(fd uintptr) {
+					errLinger = syscall.SetsockoptLinger(int(fd), syscall.SOL_SOCKET, syscall.SO_LINGER, &syscall.Linger{Onoff: 1, Linger: 0})
+				}); err != nil {
+					return err
+				}
+				return errLinger
+			},
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          10000,
@@ -355,6 +365,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 
 	go func() {
 		defer close(results)
+		defer a.transport.CloseIdleConnections()
 		// httpCtx: preserved before the duration timeout is applied.
 		// HTTP requests use this so in-flight requests are not forcibly
 		// cancelled when the test duration expires; they complete naturally.
@@ -455,6 +466,15 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 			dialer := &net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
+				Control: func(network, address string, c syscall.RawConn) error {
+					var errLinger error
+					if err := c.Control(func(fd uintptr) {
+						errLinger = syscall.SetsockoptLinger(int(fd), syscall.SOL_SOCKET, syscall.SO_LINGER, &syscall.Linger{Onoff: 1, Linger: 0})
+					}); err != nil {
+						return err
+					}
+					return errLinger
+				},
 			}
 
 			resolver := net.DefaultResolver
@@ -639,7 +659,8 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 					return jar
 				}
 
-				wsTransport := NewWSRoundTripper(a.transport)
+				sseTransport := NewSSERoundTripper(a.transport)
+				wsTransport := NewWSRoundTripper(sseTransport)
 				currentFollowRedirects := true
 				sessionClient := &http.Client{
 					Transport: wsTransport,
@@ -664,6 +685,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				// Ensure any held locks and WebSocket connections are released when worker exits
 				defer func() {
 					wsTransport.CloseAll()
+					sseTransport.CloseAll()
 					for name, mu := range session.HeldLocks {
 						mu.Unlock()
 						delete(session.HeldLocks, name)
@@ -1269,6 +1291,15 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 						} else {
 							reqURL = session.Evaluator.Evaluate(sampler.Request.URL)
 						}
+						if sampler.IsSSESampler {
+							if strings.HasPrefix(reqURL, "https://") {
+								reqURL = "sses://" + strings.TrimPrefix(reqURL, "https://")
+							} else if strings.HasPrefix(reqURL, "http://") {
+								reqURL = "sse://" + strings.TrimPrefix(reqURL, "http://")
+							} else if !strings.HasPrefix(reqURL, "sse://") && !strings.HasPrefix(reqURL, "sses://") {
+								reqURL = "sse://" + reqURL
+							}
+						}
 						method := sampler.Request.Method
 						bodyStr := session.Evaluator.Evaluate(sampler.Request.BodyTemplate)
 
@@ -1465,14 +1496,15 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 											b64 := base64.StdEncoding.EncodeToString([]byte(authStr))
 											req.Header.Set("Authorization", "Basic "+b64)
 										}
-										break
 									}
 								}
 							}
-
 							currentFollowRedirects = sampler.Request.FollowRedirects
 
 							start := time.Now()
+							if reqCtx.Err() != nil {
+								fmt.Printf("[DEBUG] reqCtx is ALREADY cancelled before Do(): %v\n", reqCtx.Err())
+							}
 							resp, err = sessionClient.Do(req)
 							elapsed := time.Since(start)
 							if cancel != nil {
@@ -1493,7 +1525,9 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 								URL:       reqURL,
 							}
 
-							if err == nil {
+							if err != nil {
+								res.Error = err.Error()
+							} else {
 								res.Code = uint16(resp.StatusCode)
 								needsBody := true // Always read body in stateful mode for subsequent PreProcessors (like HTMLLinkParser)
 
@@ -1545,8 +1579,6 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 										}
 									}
 								}
-							} else {
-								res.Error = err.Error()
 							}
 						}
 

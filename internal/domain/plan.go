@@ -299,6 +299,9 @@ type Sampler struct {
 	OSCheckReturnCode    bool
 	OSExpectedReturnCode string
 
+	// SSE Sampler specific fields
+	IsSSESampler bool
+
 	// Loop/While/Critical/ForEach Controller specific fields (Control Flow Markers)
 	IsControlFlow          bool   // True if this is a marker (not a real request)
 	ControlType            string // "LoopStart", "LoopEnd", "WhileStart", "WhileEnd", "CriticalStart", "CriticalEnd", "ForEachStart", "ForEachEnd"
