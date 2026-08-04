@@ -74,6 +74,7 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 			} else if !tg.ContinueForever && tg.Loops > 0 {
 				dur = 0 // Run until thread iteration limits are reached
 			}
+			fmt.Printf("[DEBUG] tg.Scheduler=%v, tg.Duration=%d, tg.ContinueForever=%v, tg.Loops=%d, Final dur=%v\n", tg.Scheduler, tg.Duration, tg.ContinueForever, tg.Loops, dur)
 		}
 	}
 

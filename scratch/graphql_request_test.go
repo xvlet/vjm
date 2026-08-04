@@ -6,9 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/xvlet/vjm/internal/domain"
@@ -53,8 +51,6 @@ func TestGraphQLRequestSampler(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	u, _ := url.Parse(server.URL)
-	port := u.Port()
 
 	// 2. Parse JMX
 	p := parser.NewDefaultJmxParser()
@@ -67,7 +63,7 @@ func TestGraphQLRequestSampler(t *testing.T) {
 	if len(plan.ThreadGroups) > 0 {
 		for _, s := range plan.ThreadGroups[0].Samplers {
 			if s.Request != nil {
-				s.Request.URL = strings.Replace(s.Request.URL, "58080", port, 1)
+				s.Request.URL = server.URL + "/test/sampler/graphql"
 			}
 		}
 	}
