@@ -277,7 +277,7 @@ func NewStatefulAttacker(workers uint64, pacer vegeta.Pacer, dur time.Duration, 
 			Control: func(network, address string, c syscall.RawConn) error {
 				var errLinger error
 				if err := c.Control(func(fd uintptr) {
-					errLinger = syscall.SetsockoptLinger(int(fd), syscall.SOL_SOCKET, syscall.SO_LINGER, &syscall.Linger{Onoff: 1, Linger: 0})
+					errLinger = setLingerZero(fd)
 				}); err != nil {
 					return err
 				}
@@ -469,7 +469,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 				Control: func(network, address string, c syscall.RawConn) error {
 					var errLinger error
 					if err := c.Control(func(fd uintptr) {
-						errLinger = syscall.SetsockoptLinger(int(fd), syscall.SOL_SOCKET, syscall.SO_LINGER, &syscall.Linger{Onoff: 1, Linger: 0})
+						errLinger = setLingerZero(fd)
 					}); err != nil {
 						return err
 					}
