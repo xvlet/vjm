@@ -340,6 +340,7 @@ test.user.id=tester_001
 - [x] **Stateful 변수 체이닝 (Extractor)**: 이전 요청의 응답에서 값을 추출하여 다음 요청에 주입하는 순차적 시나리오 지원
 - [x] **JMeter CSV DataSet 지원**: `CSVDataSet`에서 요청별 다른 파라미터 주입
 - [x] **WebSocket 지원**: WS 프로토콜 부하 테스트 연동
+- [x] **SSE (Server-Sent Events) 지원**: SSE 프로토콜 부하 테스트 연동 (`com.jmeter.sse.SSESampler`)
 - [x] **실시간 콘솔 대시보드**: 테스트 진행 중 실시간 TPS / 응답시간 모니터링
 
 <details>
@@ -356,6 +357,7 @@ test.user.id=tester_001
 - ~~[ ] **Bolt Request**~~ (제외 - 데이터베이스 프로토콜, 비 HTTP)
 - ~~[ ] **FTP Request**~~ (제외 - 레거시 프로토콜, 비 HTTP)
 - [x] **GraphQL HTTP Request**
+- [x] **SSE Sampler** (`com.jmeter.sse.SSESampler` — 영속 커넥션 유지, 반복마다 이벤트 1건 수신)
 - ~~[ ] **JDBC Request**~~ (제외 - 데이터베이스 프로토콜, 비 HTTP)
 - ~~[ ] **JMS Point-to-Point**~~ (제외 - 메시지 큐 지향, 비 HTTP)
 - ~~[ ] **JMS Publisher**~~ (제외 - 메시지 큐 지향, 비 HTTP)

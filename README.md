@@ -341,6 +341,7 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 - [x] **Stateful Variable Chaining (Extractors)**: Support sequential scenarios by extracting values from previous responses and injecting them into subsequent requests
 - [x] **JMeter CSV DataSet Support**: Inject different parameters per request from a `CSVDataSet`
 - [x] **WebSocket Support**: Integration for WS protocol load testing
+- [x] **SSE (Server-Sent Events) Support**: Integration for SSE protocol load testing (`com.jmeter.sse.SSESampler`)
 - [x] **Real-time Console Dashboard**: Real-time TPS / response time monitoring during tests
 
 <details>
@@ -357,6 +358,7 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 - ~~[ ] **Bolt Request**~~ (Excluded - Database protocol, non-HTTP)
 - ~~[ ] **FTP Request**~~ (Excluded - Legacy protocol, non-HTTP)
 - [x] **GraphQL HTTP Request**
+- [x] **SSE Sampler** (`com.jmeter.sse.SSESampler` — persistent connection, reads one event per iteration)
 - ~~[ ] **JDBC Request**~~ (Excluded - Database protocol, non-HTTP)
 - ~~[ ] **JMS Point-to-Point**~~ (Excluded - Message queue oriented, non-HTTP)
 - ~~[ ] **JMS Publisher**~~ (Excluded - Message queue oriented, non-HTTP)
