@@ -36,19 +36,15 @@
                         <collectionProp name="Arguments.arguments">
                             <elementProp name="" elementType="HTTPArgument" enabled="true">
                                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                                <stringProp name="Argument.value">{&quot;operationName&quot;:&quot;getUser&quot;,&quot;variables&quot;:{&quot;id&quot;:
-                                    &quot;123&quot;},&quot;query&quot;:&quot;query getUser($id: ID!)
-                                    { user(id: $id) { name } }&quot;}</stringProp>
+                                <stringProp name="Argument.value">{&quot;operationName&quot;:&quot;getUser&quot;,&quot;variables&quot;:{&quot;id&quot;:&quot;123&quot;},&quot;query&quot;:&quot;query getUser($id: ID!) { user(id: $id) { name } }&quot;}</stringProp>
                                 <stringProp name="Argument.metadata">=</stringProp>
                                 <boolProp name="HTTPArgument.use_equals">true</boolProp>
                             </elementProp>
                         </collectionProp>
                     </elementProp>
                     <stringProp name="GraphQLHTTPSampler.operationName">getUser</stringProp>
-                    <stringProp name="GraphQLHTTPSampler.query">query getUser($id: ID!) { user(id:
-                        $id) { name } }</stringProp>
-                    <stringProp name="GraphQLHTTPSampler.variables">{&quot;id&quot;:
-                        &quot;123&quot;}</stringProp>
+                    <stringProp name="GraphQLHTTPSampler.query">query getUser($id: ID!) { user(id: $id) { name } }</stringProp>
+                    <stringProp name="GraphQLHTTPSampler.variables">{&quot;id&quot;:&quot;123&quot;}</stringProp>
                     <boolProp name="HTTPSampler.BROWSER_COMPATIBLE_MULTIPART">false</boolProp>
                     <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
                 </HTTPSamplerProxy>
