@@ -2,10 +2,11 @@
   <img src="https://img.shields.io/badge/vjm-Vegeta--JMeter%20Engine-4A90D9?style=for-the-badge&logo=apache-jmeter&logoColor=white" alt="vjm banner">
 </p>
 
-<h1 align="center">⚡ vjm — Vegeta-JMeter Engine</h1>
+<h1 align="center">⚡ VJM — Vegeta-JMeter Engine</h1>
+<h3 align="center">A High-Performance JMeter Engine powered by Vegeta</h3>
 
 <p align="center">
-  <b>JMeter 테스트 플랜으로 Vegeta의 성능을 그대로 활용하세요.</b><br>
+  <b>JMeter 테스트 플랜(JMX)으로 수백만 건의 요청을 Vegeta로 실행하세요.</b><br>
   Write with JMeter. Attack with Vegeta. Report with JMeter.
 </p>
 
@@ -21,9 +22,19 @@
 
 ## 개요
 
-**vjm**은 [Apache JMeter](https://jmeter.apache.org/)의 `.jmx` 테스트 플랜과 리포팅 기능을 그대로 활용하면서, 실제 HTTP 부하 발생은 Go 기반의 고성능 도구인 [Vegeta](https://github.com/tsenart/vegeta)를 통해 수행하는 **브릿지 엔진**입니다.
+**VJM**은 [Apache JMeter](https://jmeter.apache.org/)의 `.jmx` 테스트 플랜과 리포팅 기능을 그대로 활용하면서, 실제 HTTP 부하 발생은 Go 기반의 고성능 도구인 [Vegeta](https://github.com/tsenart/vegeta)를 통해 수행하는 **JMeter 툴킷이자 브릿지 엔진**입니다.
 
-JMeter는 강력한 테스트 시나리오 작성 도구이지만 JVM 기반 특성상 대규모 동시 접속에서 성능 한계가 있습니다. vjm은 이 한계를 넘어, JMeter의 풍부한 생태계(GUI, 함수, 리포트)를 보존하면서 수천 TPS 이상의 부하를 안정적으로 발생시킵니다.
+JMeter는 강력한 테스트 시나리오 작성 도구이지만 JVM 기반 특성상 대규모 동시 접속에서 성능 한계가 있습니다. **VJM**은 이 한계를 넘어, JMeter의 풍부한 생태계(GUI, 함수, 리포트)를 보존하면서 수천 TPS 이상의 부하를 안정적으로 발생시킵니다.
+
+### Why VJM?
+
+- ✅ **기존 JMeter 테스트 플랜(.jmx) 100% 호환** (수정 불필요)
+- ✅ **100% Native Go (No JVM)** 로 빠르고 가벼운 리소스 사용량
+- ✅ **Vegeta 엔진 기반의 강력한 성능** (수천 TPS 이상의 Load Testing 완벽 지원)
+- ✅ **JMeter HTML Dashboard 리포트** 자동 생성 지원
+- ✅ **JMeter 생태계 완벽 지원:** 각종 추출기(JSON/Regex), 검증(Assertion), 논리 컨트롤러 및 내장 함수
+- ✅ **CSV DataSet 지원**을 통한 동적 파라미터 주입
+- ✅ **크로스 플랫폼 단일 바이너리** (Linux, macOS, Windows, AIX 지원, 의존성 없음)
 
 ```mermaid
 flowchart LR
@@ -65,7 +76,7 @@ flowchart LR
 
 ## 연관 프로젝트: echosvr
 
-`vjm`을 테스트하기 위한 대상(Target) 백엔드 서버가 필요하다면 [echosvr](https://github.com/xvlet/echosvr)를 활용할 수 있습니다.
+**VJM**을 테스트하기 위한 대상(Target) 백엔드 서버가 필요하다면 [echosvr](https://github.com/xvlet/echosvr)를 활용할 수 있습니다.
 HTTP 및 WebSocket 엔드포인트, 응답 지연(Latency) 시뮬레이션, 에러 응답, 커스텀 헤더 등을 지원하는 경량 목(Mock) 서버입니다.
 
 ---
@@ -161,7 +172,7 @@ chmod +x vjm
 ./vjm -h
 ```
 ### 5. Docker 사용
-호스트 환경에 아무것도 설치하지 않고 도커를 통해 `vjm`을 실행할 수 있습니다. 공식 이미지는 GitHub Container Registry(GHCR)를 통해 자동 배포됩니다.
+호스트 환경에 아무것도 설치하지 않고 도커를 통해 **VJM**을 실행할 수 있습니다. 공식 이미지는 GitHub Container Registry(GHCR)를 통해 자동 배포됩니다.
 
 정상적으로 작동하는지 도움말 명령어로 확인해 볼 수 있습니다:
 ```bash
@@ -182,13 +193,13 @@ docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t my_
 
 ## 사전 요구사항
 
-`vjm`은 단일 바이너리로 동작하며, 부하 테스트 실행을 위해 사전 설치해야 할 **외부 종속성이 없습니다.**
+**VJM**은 단일 바이너리로 동작하며, 부하 테스트 실행을 위해 사전 설치해야 할 **외부 종속성이 없습니다.**
 
 | 도구 | 용도 | 설치 확인 |
 |------|------|----------|
 | [Apache JMeter](https://jmeter.apache.org/) | HTML 리포트 생성 (선택) | `$JMETER_HOME/bin/jmeter -v` |
 
-> **참고:** JMeter는 HTML 리포트(`-e` 옵션)를 생성할 때만 필요합니다. 부하 테스트 실행 자체에는 필요하지 않습니다. (Vegeta 엔진은 `vjm` 내부에 라이브러리로 내장되어 있습니다.)
+> **참고:** JMeter는 HTML 리포트(`-e` 옵션)를 생성할 때만 필요합니다. 부하 테스트 실행 자체에는 필요하지 않습니다. (Vegeta 엔진은 **VJM** 내부에 라이브러리로 내장되어 있습니다.)
 
 ---
 
@@ -506,11 +517,11 @@ test.user.id=tester_001
 
 ## 지원하지 않는 JMeter 기능 (아키텍처 제약 사항)
 
-`vjm`은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 기반으로 부하를 발생시킵니다. 하지만 네이티브 Go 언어로 구현된 특성상 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
+**VJM**은 JMeter의 **"쓰레드 기반의 순차적 상태(Stateful) 모델"**을 기반으로 부하를 발생시킵니다. 하지만 네이티브 Go 언어로 구현된 특성상 다음의 JMeter 요소들은 구조적으로 지원하기 어렵습니다.
 
-*   **JVM 종속 요소 (JSR223, BeanShell, JDBC 등)**: `vjm`은 네이티브 애플리케이션이므로 Java 가상 머신(JVM)을 내장하지 않습니다. 따라서 Java 스크립트 실행이나 JDBC 드라이버가 필요한 요소는 지원하지 않습니다.
+*   **JVM 종속 요소 (JSR223, BeanShell, JDBC 등)**: **VJM**은 네이티브 애플리케이션이므로 Java 가상 머신(JVM)을 내장하지 않습니다. 따라서 Java 스크립트 실행이나 JDBC 드라이버가 필요한 요소는 지원하지 않습니다.
 
-*(참고: 복잡한 흐름 제어 로직 (If, While, Loop, ForEach Controller 등), Extractor를 활용한 변수 체이닝, HTTP Cookie Manager, 각종 Timer 및 Assertion(검증) 기능 등 필수적인 상태 유지 및 제어 기능들은 `vjm`의 자체적인 Stateful 엔진 모드를 통해 현재 완벽하게 지원됩니다.)*
+*(참고: 복잡한 흐름 제어 로직 (If, While, Loop, ForEach Controller 등), Extractor를 활용한 변수 체이닝, HTTP Cookie Manager, 각종 Timer 및 Assertion(검증) 기능 등 필수적인 상태 유지 및 제어 기능들은 **VJM**의 자체적인 Stateful 엔진 모드를 통해 현재 완벽하게 지원됩니다.)*
 
 ---
 
@@ -610,7 +621,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <b>vjm</b> — Write with JMeter. Attack with Vegeta. ⚡
+  <b>VJM</b> — Write with JMeter. Attack with Vegeta. ⚡
 </p>
 
 <p align="center">
