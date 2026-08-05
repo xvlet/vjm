@@ -2,10 +2,11 @@
   <img src="https://img.shields.io/badge/vjm-Vegeta--JMeter%20Engine-4A90D9?style=for-the-badge&logo=apache-jmeter&logoColor=white" alt="vjm banner">
 </p>
 
-<h1 align="center">⚡ vjm — Vegeta-JMeter Engine</h1>
+<h1 align="center">⚡ VJM — Vegeta-JMeter Engine</h1>
+<h3 align="center">A High-Performance JMeter Engine powered by Vegeta</h3>
 
 <p align="center">
-  <b>Harness the power of Vegeta with your JMeter Test Plans.</b><br>
+  <b>Run JMeter test plans at millions of requests using Vegeta.</b><br>
   Write with JMeter. Attack with Vegeta. Report with JMeter.
 </p>
 
@@ -22,9 +23,19 @@
 
 ## Overview
 
-**vjm** is a **bridge engine** that allows you to utilize [Apache JMeter](https://jmeter.apache.org/)'s `.jmx` test plans and reporting capabilities while executing the actual HTTP load generation using the high-performance Go-based tool, [Vegeta](https://github.com/tsenart/vegeta).
+**VJM** is a **JMeter Toolkit and bridge engine** that allows you to utilize [Apache JMeter](https://jmeter.apache.org/)'s `.jmx` test plans and reporting capabilities while executing the actual HTTP load generation using the high-performance Go-based tool, [Vegeta](https://github.com/tsenart/vegeta).
 
-While JMeter is a powerful tool for writing test scenarios, its JVM-based nature limits its performance under massive concurrent connections. `vjm` overcomes this limitation by preserving JMeter's rich ecosystem (GUI, functions, reports) while stably generating thousands of TPS using the Vegeta engine.
+While JMeter is a powerful tool for writing test scenarios, its JVM-based nature limits its performance under massive concurrent connections. **VJM** overcomes this limitation by preserving JMeter's rich ecosystem (GUI, functions, reports) while stably generating thousands of TPS using the Vegeta engine.
+
+### Why VJM?
+
+- ✅ **Use existing JMeter test plans (.jmx)** without modifications.
+- ✅ **100% Native Go (No JVM)** for maximum efficiency and low resource footprint.
+- ✅ **Thousands of TPS** stably generated for intense Performance Testing and Load Testing.
+- ✅ **Full JMeter HTML Reports** generated automatically from results (JTL).
+- ✅ **Rich JMeter Ecosystem Support:** Extractors (JSON/Regex), Assertions, Logic Controllers, and standard Functions.
+- ✅ **CSV DataSet Support** for dynamic payload parameters.
+- ✅ **Cross-Platform** single binary (Linux, macOS, Windows, AIX) with no external dependencies.
 
 ```mermaid
 flowchart LR
@@ -66,7 +77,7 @@ flowchart LR
 
 ## Companion Tool: echosvr
 
-If you need a target backend to test `vjm`, you can use [echosvr](https://github.com/xvlet/echosvr). 
+If you need a target backend to test **VJM**, you can use [echosvr](https://github.com/xvlet/echosvr). 
 It is a lightweight mock server that supports HTTP and WebSocket endpoints, simulated latency, error responses, and custom headers.
 
 ---
@@ -123,10 +134,10 @@ If you already have a `.bin` or `.jtl` file, you can generate a report without r
 
 ## Installation
 
-You can install `vjm` using one of the following methods.
+You can install **VJM** using one of the following methods.
 
 ### 1. Homebrew (macOS / Linux)
-You can easily install `vjm` using Homebrew via our custom tap:
+You can easily install **VJM** using Homebrew via our custom tap:
 ```bash
 brew tap xvlet/vjm
 brew install vjm
@@ -146,7 +157,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xvl
 ```
 
 ### 3. Using Go (go install)
-If you have Go (1.25+) installed, you can easily install `vjm` via `go install`:
+If you have Go (1.25+) installed, you can easily install **VJM** via `go install`:
 ```bash
 go install github.com/xvlet/vjm/cmd/vjm@latest
 ```
@@ -162,7 +173,7 @@ chmod +x vjm
 ./vjm -h
 ```
 ### 5. Using Docker
-You can run `vjm` using Docker without installing anything on your host. Our official images are published to the GitHub Container Registry (GHCR).
+You can run **VJM** using Docker without installing anything on your host. Our official images are published to the GitHub Container Registry (GHCR).
 
 You can verify it works by running the help command:
 ```bash
@@ -183,13 +194,13 @@ docker run --rm -v ${PWD}:/app -w /app -e TZ=Asia/Seoul ghcr.io/xvlet/vjm -t my_
 
 ## Prerequisites
 
-`vjm` is a statically compiled Go binary with **no external dependencies required** to run a load test.
+**VJM** is a statically compiled Go binary with **no external dependencies required** to run a load test.
 
 | Tool | Purpose | Installation Check |
 |------|---------|-------------------|
 | [Apache JMeter](https://jmeter.apache.org/) | HTML report generation (Optional) | `$JMETER_HOME/bin/jmeter -v` |
 
-> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself. Vegeta is embedded directly into the `vjm` engine.
+> **Note:** JMeter is only required when generating HTML reports (`-e` option). It is not needed to execute the load test itself. Vegeta is embedded directly into the **VJM** engine.
 
 ---
 
@@ -507,11 +518,11 @@ Evaluates standard JMeter functions used within the `.jmx` file.
 
 ## Unsupported JMeter Features (Architectural Limitations)
 
-Because `vjm` translates JMeter's **Thread-based, sequential state** model into Vegeta's engine, some JMeter elements heavily reliant on JVM infrastructure remain unsupported:
+Because **VJM** translates JMeter's **Thread-based, sequential state** model into Vegeta's engine, some JMeter elements heavily reliant on JVM infrastructure remain unsupported:
 
-*   **JVM-Dependent Elements (e.g., JSR223, BeanShell, JDBC)**: `vjm` is a native Go application and does not embed a Java Virtual Machine. Elements requiring Java script execution or JDBC drivers are not supported.
+*   **JVM-Dependent Elements (e.g., JSR223, BeanShell, JDBC)**: **VJM** is a native Go application and does not embed a Java Virtual Machine. Elements requiring Java script execution or JDBC drivers are not supported.
 
-*(Note: Essential stateful features like Complex Logic Controllers (If, While, Loop, ForEach), Extractors, HTTP Cookie Manager, Timers, and Assertions **ARE** fully supported via `vjm`'s internal engine enhancements.)*
+*(Note: Essential stateful features like Complex Logic Controllers (If, While, Loop, ForEach), Extractors, HTTP Cookie Manager, Timers, and Assertions **ARE** fully supported via **VJM**'s internal engine enhancements.)*
 
 ---
 
@@ -611,7 +622,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <b>vjm</b> — Write with JMeter. Attack with Vegeta. ⚡
+  <b>VJM</b> — Write with JMeter. Attack with Vegeta. ⚡
 </p>
 
 <p align="center">
