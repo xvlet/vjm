@@ -42,12 +42,6 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 	// Remove result file if exists to start fresh
 	_ = os.Remove(config.ResultBinPath)
 
-	if config.ForceCLI {
-		log.Printf("[VegetaRunner] -force-cli flag enabled. Ignoring Thread Group configs and using Rate=%d, Duration=%s", config.Rate, config.Duration)
-		tgRunner := &threadgroup.StandardRunner{}
-		return tgRunner.Run(ctx, plan, config, eval.Clone())
-	}
-
 	var setupGroups []*domain.ThreadGroup
 	var mainGroups []*domain.ThreadGroup
 	var teardownGroups []*domain.ThreadGroup
@@ -103,7 +97,12 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 				subConfig := *config
 				subConfig.ResultBinPath = fmt.Sprintf("%s.tg%d", config.ResultBinPath, idx)
 
-				tgRunner := threadgroup.GetRunner(threadGrp)
+				var tgRunner threadgroup.Runner
+				if config.ForceCLI {
+					tgRunner = &threadgroup.StandardRunner{}
+				} else {
+					tgRunner = threadgroup.GetRunner(threadGrp)
+				}
 
 				if err := tgRunner.Run(ctx, subPlan, &subConfig, eval.Clone()); err != nil {
 					return err

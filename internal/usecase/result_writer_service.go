@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -46,7 +47,10 @@ func WriteCustomJTLsIfNeeded(binPath string, collectors []*domain.ResultCollecto
 			"sentBytes", "grpThreads", "allThreads", "URL", "Latency",
 			"IdleTime", "Connect",
 		}
-		_ = w.Write(header)
+		if err := w.Write(header); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("failed to write CSV header for %s: %w", c.Filename, err)
+		}
 
 		contexts = append(contexts, &writerContext{
 			file:   f,
@@ -122,7 +126,9 @@ func WriteCustomJTLsIfNeeded(binPath string, collectors []*domain.ResultCollecto
 				if ctx.c.SuccessOnlyLogging && !isSuccess {
 					continue
 				}
-				_ = ctx.writer.Write(record)
+				if err := ctx.writer.Write(record); err != nil {
+					log.Printf("failed to write record to CSV %s: %v", ctx.c.Filename, err)
+				}
 			}
 		}
 		_ = f.Close()
