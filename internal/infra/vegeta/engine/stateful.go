@@ -553,1138 +553,21 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 		for i := uint64(0); i < a.maxW; i++ {
 			wg.Add(1)
 			go func(sessionID uint64) {
-				defer wg.Done()
-
-				if len(plan.ThreadGroups) == 0 {
-					return
+				worker := &statefulWorker{
+					id:                    sessionID,
+					attacker:              a,
+					plan:                  plan,
+					globalEval:            globalEval,
+					sharedCSVs:            sharedCSVs,
+					sharedCounters:        sharedCounters,
+					sharedRandomVariables: sharedRandomVariables,
+					syncBarriers:          syncBarriers,
+					dnsManager:            dnsManager,
+					attackStart:           attackStart,
+					results:               results,
+					tokens:                tokens,
 				}
-				tgIdx := int(sessionID) % len(plan.ThreadGroups)
-				tg := plan.ThreadGroups[tgIdx]
-				session := NewSession(sessionID, plan, tg, globalEval.Clone())
-
-				var localRandomVariables []*RandomVariableRuntime
-				for _, rv := range plan.RandomVariables {
-					if rv.PerThread {
-						localRandomVariables = append(localRandomVariables, parseRandomVariable(rv))
-					}
-				}
-				for _, rv := range tg.RandomVariables {
-					if rv.PerThread {
-						localRandomVariables = append(localRandomVariables, parseRandomVariable(rv))
-					}
-				}
-
-				var localCSVs []*CSVRuntime
-				for _, scsv := range sharedCSVs {
-					if scsv.Config.ShareMode == "shareMode.thread" {
-						var next int64 = 0
-						localCSVs = append(localCSVs, &CSVRuntime{
-							Config:   scsv.Config,
-							Lines:    scsv.Lines,
-							Next:     &next,
-							VarNames: scsv.VarNames,
-						})
-					} else {
-						localCSVs = append(localCSVs, scsv)
-					}
-				}
-
-				var localCounters []*CounterRuntime
-				for _, sc := range sharedCounters {
-					if sc.Config.PerUser {
-						curr := sc.Start
-						localCounters = append(localCounters, &CounterRuntime{
-							Config:  sc.Config,
-							Current: &curr,
-							Start:   sc.Start,
-							End:     sc.End,
-							Incr:    sc.Incr,
-						})
-					} else {
-						localCounters = append(localCounters, sc)
-					}
-				}
-
-				var cookieManager *domain.CookieManager
-				if plan.CookieManager != nil {
-					cookieManager = plan.CookieManager
-				}
-				if tg.CookieManager != nil {
-					cookieManager = tg.CookieManager
-				}
-
-				var cacheManager *domain.CacheManager
-				if plan.CacheManager != nil {
-					cacheManager = plan.CacheManager
-				}
-				if tg.CacheManager != nil {
-					cacheManager = tg.CacheManager
-				}
-
-				var authManager *domain.AuthManager
-				if plan.AuthManager != nil {
-					authManager = plan.AuthManager
-				}
-				if tg.AuthManager != nil {
-					authManager = tg.AuthManager
-				}
-
-				createCookieJar := func() http.CookieJar {
-					jar, _ := cookiejar.New(nil)
-					if cookieManager != nil {
-						for _, c := range cookieManager.Cookies {
-							domainStr := session.Evaluator.Evaluate(c.Domain)
-							pathStr := session.Evaluator.Evaluate(c.Path)
-							if pathStr == "" {
-								pathStr = "/"
-							}
-							u := &url.URL{
-								Scheme: "http",
-								Host:   domainStr,
-								Path:   pathStr,
-							}
-							if c.Secure {
-								u.Scheme = "https"
-							}
-							hc := &http.Cookie{
-								Name:   session.Evaluator.Evaluate(c.Name),
-								Value:  session.Evaluator.Evaluate(c.Value),
-								Domain: domainStr,
-								Path:   pathStr,
-								Secure: c.Secure,
-							}
-							jar.SetCookies(u, []*http.Cookie{hc})
-						}
-					}
-					return jar
-				}
-
-				sseTransport := NewSSERoundTripper(a.transport)
-				wsTransport := NewWSRoundTripper(sseTransport)
-				currentFollowRedirects := true
-				sessionClient := &http.Client{
-					Transport: wsTransport,
-					Timeout:   30 * time.Second,
-					Jar:       createCookieJar(),
-					CheckRedirect: func(req *http.Request, via []*http.Request) error {
-						if !currentFollowRedirects {
-							return http.ErrUseLastResponse
-						}
-						if len(via) >= 10 {
-							return errors.New("stopped after 10 redirects")
-						}
-						return nil
-					},
-				}
-
-				// [PERF] Calculate allRVs once outside the loop (removes heap allocation per iteration)
-				allRVs := make([]*RandomVariableRuntime, 0, len(sharedRandomVariables)+len(localRandomVariables))
-				allRVs = append(allRVs, sharedRandomVariables...)
-				allRVs = append(allRVs, localRandomVariables...)
-
-				// Ensure any held locks and WebSocket connections are released when worker exits
-				defer func() {
-					wsTransport.CloseAll()
-					sseTransport.CloseAll()
-					for name, mu := range session.HeldLocks {
-						mu.Unlock()
-						delete(session.HeldLocks, name)
-					}
-				}()
-				tgLoops := 0
-				tgContinueForever := true
-				if len(plan.ThreadGroups) > 0 {
-					tgLoops = plan.ThreadGroups[0].Loops
-					tgContinueForever = plan.ThreadGroups[0].ContinueForever
-				}
-				iterCount := 0
-
-				for {
-					if ctx.Err() != nil {
-						return
-					}
-
-					if !tgContinueForever && tgLoops > 0 {
-						if iterCount >= tgLoops {
-							return
-						}
-						iterCount++
-					}
-
-					if cookieManager != nil && cookieManager.ClearEachIteration {
-						sessionClient.Jar = createCookieJar()
-					}
-					if cacheManager != nil && cacheManager.ClearEachIteration {
-						session.Cache = make(map[string]*CacheEntry)
-					}
-
-					for _, rv := range allRVs {
-						var val int64
-						if rv.Config.PerThread {
-							val = rv.Min + rv.Rand.Int64N(rv.Max-rv.Min+1)
-						} else {
-							rv.Mutex.Lock()
-							val = rv.Min + rv.Rand.Int64N(rv.Max-rv.Min+1)
-							rv.Mutex.Unlock()
-						}
-						formatStr := rv.Config.Format
-						if formatStr == "" {
-							session.Evaluator.SetVariable(rv.Config.Name, strconv.FormatInt(val, 10))
-						} else {
-							session.Evaluator.SetVariable(rv.Config.Name, formatRandomVariable(val, formatStr))
-						}
-					}
-
-					// Bind CSV variables at the start of each iteration
-					for _, csv := range localCSVs {
-						if len(csv.Lines) == 0 {
-							continue
-						}
-						idx := atomic.AddInt64(csv.Next, 1) - 1
-						if !csv.Config.Recycle && int(idx) >= len(csv.Lines) {
-							if csv.Config.StopThread {
-								return // Stop this thread
-							}
-							continue
-						}
-						row := csv.Lines[int(idx)%len(csv.Lines)]
-						// [PERF] VarNames are parsed only once during parseCSV (removes strings.Split per iteration)
-						for i, vName := range csv.VarNames {
-							if vName != "" && i < len(row) {
-								session.Variables[vName] = row[i]
-								session.Evaluator.SetVariable(vName, row[i])
-							}
-						}
-					}
-
-					// Evaluate Counters
-					for _, c := range localCounters {
-						var val int64
-						if c.End != 0 {
-							for {
-								curr := atomic.LoadInt64(c.Current)
-								val = curr
-								next := curr + c.Incr
-								if next > c.End {
-									next = c.Start
-								}
-								if atomic.CompareAndSwapInt64(c.Current, curr, next) {
-									break
-								}
-							}
-						} else {
-							val = atomic.AddInt64(c.Current, c.Incr) - c.Incr
-						}
-
-						var valStr string
-						if c.Config.Format != "" {
-							formatLen := len(c.Config.Format)
-							valStr = fmt.Sprintf("%0*d", formatLen, val)
-						} else {
-							valStr = strconv.FormatInt(val, 10)
-						}
-						session.Variables[c.Config.Name] = valStr
-						session.Evaluator.SetVariable(c.Config.Name, valStr)
-					}
-
-					elapsed := time.Since(attackStart)
-					if a.dur > 0 && elapsed >= a.dur {
-						return
-					}
-					if atomic.LoadInt32(&a.stopped) == 1 {
-						return
-					}
-
-					if a.workerPacer != nil {
-						wait, stop := a.workerPacer(sessionID, time.Since(attackStart))
-						if stop {
-							return
-						}
-						if wait > 0 {
-							select {
-							case <-time.After(wait):
-							case <-ctx.Done():
-								return
-							}
-						}
-					} else {
-						select {
-						case _, ok := <-tokens:
-							if !ok {
-								return
-							}
-						case <-ctx.Done():
-							return
-						}
-					}
-
-					// Execute samplers sequentially
-					step := 0
-				samplerLoop:
-					for ; ; step++ {
-						if step >= len(session.Tg.Samplers) {
-							if len(session.CallStack) > 0 {
-								frame := session.CallStack[len(session.CallStack)-1]
-								session.CallStack = session.CallStack[:len(session.CallStack)-1]
-								session.Tg = frame.Tg
-								step = frame.Step
-								continue samplerLoop
-							}
-							break samplerLoop
-						}
-
-						if jump, ok := session.InterleaveJump[step]; ok {
-							delete(session.InterleaveJump, step)
-							step = jump
-						}
-						sampler := session.Tg.Samplers[step]
-						session.Evaluator.SetSamplerName(sampler.Name)
-
-						if sampler.IsControlFlow {
-							switch sampler.ControlType {
-							case "LoopStart":
-								if _, ok := session.LoopCounters[sampler.LoopId]; !ok {
-									if sampler.LoopContinue {
-										session.LoopCounters[sampler.LoopId] = -1
-									} else {
-										cStr := session.Evaluator.Evaluate(sampler.LoopCountExpr)
-										c, err := strconv.Atoi(cStr)
-										if err != nil || (c < 1 && c != -1) {
-											c = 1 // default or invalid
-										}
-										session.LoopCounters[sampler.LoopId] = c
-									}
-								}
-							case "LoopEnd":
-								if count, ok := session.LoopCounters[sampler.LoopId]; ok {
-									if count == -1 || count > 1 {
-										if count > 1 {
-											session.LoopCounters[sampler.LoopId] = count - 1
-										}
-										// Subtract 1 to compensate for the step++ in the loop (consistent with WhileEnd/ForEachEnd)
-										step = sampler.LoopJumpIndex - 1
-									} else {
-										delete(session.LoopCounters, sampler.LoopId) // loop done
-									}
-								}
-							case "WhileStart":
-								condStr := sampler.WhileCondition
-								var shouldContinue bool
-								if condStr != "" && strings.ToUpper(condStr) != "LAST" {
-									shouldContinue = session.Evaluator.EvaluateLogic(condStr)
-								} else if strings.ToUpper(condStr) == "LAST" {
-									shouldContinue = session.LastSampleOK
-								} else {
-									// condStr == "" means infinite loop in JMeter
-									shouldContinue = true
-								}
-
-								if !shouldContinue {
-									step = sampler.LoopJumpIndex
-									delete(session.LoopCounters, sampler.LoopId)
-								}
-							case "WhileEnd":
-								// Jump back to WhileStart so condition is evaluated again
-								step = sampler.LoopJumpIndex - 1
-							case "CriticalStart":
-								lockName := session.Evaluator.Evaluate(sampler.CriticalLockName)
-								if lockName == "" {
-									lockName = "global_lock"
-								}
-								// If we don't already hold it
-								if _, held := session.HeldLocks[lockName]; !held {
-									muIntf, _ := globalLocks.LoadOrStore(lockName, &sync.Mutex{})
-									mu := muIntf.(*sync.Mutex)
-									mu.Lock()
-									session.HeldLocks[lockName] = mu
-								}
-							case "CriticalEnd":
-								lockName := session.Evaluator.Evaluate(sampler.CriticalLockName)
-								if lockName == "" {
-									lockName = "global_lock"
-								}
-								if mu, held := session.HeldLocks[lockName]; held {
-									mu.Unlock()
-									delete(session.HeldLocks, lockName)
-								}
-							case "RuntimeStart":
-								// Initialize deadline if it doesn't exist
-								if _, ok := session.RuntimeDeadlines[sampler.LoopId]; !ok {
-									secStr := session.Evaluator.Evaluate(sampler.RuntimeSecondsExpr)
-									sec, err := strconv.ParseFloat(secStr, 64)
-									if err != nil || sec < 0 {
-										sec = 0
-									}
-									if sec == 0 {
-										// 0 means it should not execute at all (or run forever? JMeter says 0 means run 0 seconds)
-										// Wait, if 0, it means run 0 seconds, so exit immediately.
-										step = sampler.BlockEndIndex
-										continue
-									} else {
-										session.RuntimeDeadlines[sampler.LoopId] = time.Now().Add(time.Duration(sec * float64(time.Second)))
-									}
-								}
-
-								// Check if deadline exceeded
-								if deadline, ok := session.RuntimeDeadlines[sampler.LoopId]; ok {
-									if time.Now().After(deadline) {
-										// Exit loop: jump to RuntimeEnd
-										step = sampler.BlockEndIndex
-										delete(session.RuntimeDeadlines, sampler.LoopId) // reset for next Thread iteration
-										continue
-									}
-								}
-							case "RuntimeEnd":
-								// Jump back to RuntimeStart to check deadline
-								step = sampler.LoopJumpIndex - 1
-							case "ForEachStart":
-								// Initialize if not exists
-								if _, ok := session.LoopCounters[sampler.LoopId]; !ok {
-									startIdx := 0
-									if sampler.ForEachStartIndex != "" {
-										if val, err := strconv.Atoi(session.Evaluator.Evaluate(sampler.ForEachStartIndex)); err == nil {
-											startIdx = val
-										}
-									}
-									session.LoopCounters[sampler.LoopId] = startIdx + 1
-								}
-
-								idx := session.LoopCounters[sampler.LoopId]
-
-								// Check endIndex if specified
-								if sampler.ForEachEndIndex != "" {
-									if endIdx, err := strconv.Atoi(session.Evaluator.Evaluate(sampler.ForEachEndIndex)); err == nil {
-										if idx > endIdx {
-											// exit loop
-											delete(session.LoopCounters, sampler.LoopId)
-											step = sampler.LoopJumpIndex
-											continue
-										}
-									}
-								}
-
-								// Construct var name
-								sep := ""
-								if sampler.ForEachUseSeparator {
-									sep = "_"
-								}
-								inputVarName := fmt.Sprintf("%s%s%d", session.Evaluator.Evaluate(sampler.ForEachInputVal), sep, idx)
-
-								valStr := session.Evaluator.Evaluate("${" + inputVarName + "}")
-								if valStr == "${"+inputVarName+"}" {
-									// Variable does not exist, exit loop
-									delete(session.LoopCounters, sampler.LoopId)
-									step = sampler.LoopJumpIndex
-									continue
-								}
-
-								// Set return variable
-								returnVar := session.Evaluator.Evaluate(sampler.ForEachReturnVal)
-								if returnVar != "" {
-									session.Variables[returnVar] = valStr
-									session.Evaluator.SetVariable(returnVar, valStr)
-								}
-							case "ForEachEnd":
-								session.LoopCounters[sampler.LoopId]++
-								step = sampler.LoopJumpIndex - 1 // jump back to ForEachStart
-							case "ThroughputStart":
-								maxStr := session.Evaluator.Evaluate(sampler.ThroughputMaxExpr)
-								maxVal, err := strconv.ParseFloat(maxStr, 64)
-								if err != nil || maxVal < 0 {
-									maxVal = 0
-								}
-
-								shouldExecute := false
-								if sampler.ThroughputStyle == 1 {
-									// Percent Executions (0.0 to 100.0)
-									if maxVal >= 100.0 {
-										shouldExecute = true
-									} else if maxVal > 0 {
-										shouldExecute = (rand.Float64() * 100.0) < maxVal
-									}
-								} else {
-									// Total Executions
-									maxTotal := int64(maxVal)
-									if maxTotal > 0 {
-										if sampler.ThroughputPerThread {
-											// Track per thread (Session)
-											if session.LoopCounters[sampler.LoopId] < int(maxTotal) {
-												shouldExecute = true
-												session.LoopCounters[sampler.LoopId]++
-											}
-										} else {
-											// Track globally
-											muIntf, _ := globalThroughputLocks.LoadOrStore(sampler.LoopId, &GlobalThroughputState{})
-											state := muIntf.(*GlobalThroughputState)
-
-											current := atomic.AddInt64(&state.Executions, 1)
-											if current <= maxTotal {
-												shouldExecute = true
-											}
-										}
-									}
-								}
-
-								if !shouldExecute {
-									step = sampler.BlockEndIndex
-								}
-							case "ThroughputEnd":
-								// Just fall through
-							case "InterleaveStart":
-								session.LoopCounters[sampler.LoopId]++
-								if len(sampler.InterleaveChildStarts) > 0 {
-									childIndex := (session.LoopCounters[sampler.LoopId] - 1) % len(sampler.InterleaveChildStarts)
-									startStep := sampler.InterleaveChildStarts[childIndex]
-									endStep := sampler.InterleaveChildEnds[childIndex]
-
-									// When step reaches endStep + 1, jump to InterleaveEnd
-									session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
-
-									// jump to the child
-									step = startStep - 1
-								} else {
-									// No children, just skip to end
-									step = sampler.BlockEndIndex
-								}
-							case "InterleaveEnd":
-								// Just fall through
-							case "OnceOnlyStart":
-								if session.LoopCounters[sampler.LoopId] > 0 {
-									step = sampler.BlockEndIndex
-								} else {
-									session.LoopCounters[sampler.LoopId]++
-								}
-							case "OnceOnlyEnd":
-								// Just fall through
-							case "ModuleCall":
-								// Find target node in plan.ThreadGroups
-								var targetTg *domain.ThreadGroup
-								if len(sampler.ModuleTargetNodePath) > 0 {
-									targetName := sampler.ModuleTargetNodePath[len(sampler.ModuleTargetNodePath)-1]
-									for _, ptg := range session.Plan.ThreadGroups {
-										if ptg.Name == targetName {
-											targetTg = ptg
-											break
-										}
-									}
-								}
-								if targetTg != nil && len(targetTg.Samplers) > 0 {
-									session.CallStack = append(session.CallStack, CallFrame{Tg: session.Tg, Step: step})
-									session.Tg = targetTg
-									step = -1 // will be 0 on next iteration
-								}
-							case "SwitchStart":
-								if len(sampler.SwitchChildStarts) > 0 {
-									switchVal := session.Evaluator.Evaluate(sampler.SwitchValueExpr)
-									selectedIndex := 0 // default to first child
-									if switchVal != "" {
-										// Try as index
-										if idx, err := strconv.Atoi(switchVal); err == nil {
-											if idx >= 0 && idx < len(sampler.SwitchChildStarts) {
-												selectedIndex = idx
-											}
-										} else {
-											// Try as name matching
-											for i, name := range sampler.SwitchChildNames {
-												if name == switchVal {
-													selectedIndex = i
-													break
-												}
-											}
-										}
-									}
-
-									startStep := sampler.SwitchChildStarts[selectedIndex]
-									endStep := sampler.SwitchChildEnds[selectedIndex]
-
-									session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
-									step = startStep - 1
-								} else {
-									step = sampler.BlockEndIndex
-								}
-							case "SwitchEnd":
-								// Just fall through
-							case "RandomStart":
-								if len(sampler.RandomChildStarts) > 0 {
-									// Choose a random child
-									childIndex := rand.IntN(len(sampler.RandomChildStarts))
-									startStep := sampler.RandomChildStarts[childIndex]
-									endStep := sampler.RandomChildEnds[childIndex]
-
-									// When step reaches endStep + 1, jump to RandomEnd
-									session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
-
-									// jump to the child
-									step = startStep - 1
-								} else {
-									step = sampler.BlockEndIndex
-								}
-							case "RandomEnd":
-								// Just fall through
-							case "RandomOrderStart":
-								state := session.RandomOrderState[sampler.LoopId]
-								if state == nil || state.CurrentIndex >= len(sampler.RandomOrderChildStarts) {
-									order := make([]int, len(sampler.RandomOrderChildStarts))
-									for j := range order {
-										order[j] = j
-									}
-									rand.Shuffle(len(order), func(i, j int) {
-										order[i], order[j] = order[j], order[i]
-									})
-									state = &RandomOrderState{
-										Order:        order,
-										CurrentIndex: 0,
-									}
-									session.RandomOrderState[sampler.LoopId] = state
-								}
-								if state.CurrentIndex < len(sampler.RandomOrderChildStarts) {
-									childIndex := state.Order[state.CurrentIndex]
-									startStep := sampler.RandomOrderChildStarts[childIndex]
-									endStep := sampler.RandomOrderChildEnds[childIndex]
-
-									state.CurrentIndex++
-
-									if state.CurrentIndex < len(sampler.RandomOrderChildStarts) {
-										// More children left, jump back to RandomOrderStart
-										session.InterleaveJump[endStep+1] = step
-									} else {
-										// Last child, jump out of controller
-										session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
-									}
-
-									step = startStep - 1
-								} else {
-									step = sampler.BlockEndIndex
-								}
-							case "RandomOrderEnd":
-								// Just fall through
-							case "TestAction":
-								switch sampler.TestActionAction {
-								case 1: // Pause
-									durStr := session.Evaluator.Evaluate(sampler.TestActionDuration)
-									if ms, err := strconv.Atoi(durStr); err == nil && ms > 0 {
-										select {
-										case <-time.After(time.Duration(ms) * time.Millisecond):
-										case <-ctx.Done():
-											return
-										}
-									}
-								case 0: // Stop Thread
-									return
-								case 2, 3: // Stop Test, Stop Test Now
-									atomic.StoreInt32(&a.stopped, 1)
-									if cancelFn, ok := ctx.Value(domain.CancelTestKey).(context.CancelFunc); ok {
-										cancelFn()
-									}
-									return
-								case 4: // Start Next Thread Loop
-									break samplerLoop
-								case 5: // Go to next loop iteration
-									if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
-										step = loopEnd - 1
-										continue samplerLoop
-									}
-									break samplerLoop
-								case 6: // Break Current Loop
-									if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
-										step = loopEnd
-										continue samplerLoop
-									}
-									break samplerLoop
-								}
-							case "DebugSampler":
-								var body bytes.Buffer
-								if sampler.DebugJMeterVariables {
-									for k, v := range session.Variables {
-										body.WriteString(k + "=" + v + "\n")
-									}
-									log.Printf("[DebugSampler] Variables: %v", session.Variables)
-								}
-								if sampler.DebugJMeterProperties || sampler.DebugSystemProperties {
-									body.WriteString("=== Properties ===\n")
-									// For now, we only have one set of properties in Evaluator
-									props := session.Evaluator.GetAllProperties()
-									for k, v := range props {
-										body.WriteString(k + "=" + v + "\n")
-									}
-									if sampler.DebugJMeterProperties {
-										log.Printf("[DebugSampler] JMeterProperties requested")
-									}
-									if sampler.DebugSystemProperties {
-										log.Printf("[DebugSampler] SystemProperties requested")
-									}
-								}
-								res := &vegeta.Result{
-									Attack:    sampler.Name,
-									Seq:       uint64(step),
-									Timestamp: time.Now(),
-									Latency:   0,
-									Method:    "DEBUG",
-									URL:       "DebugSampler",
-									Code:      200,
-									BytesIn:   uint64(body.Len()),
-								}
-								select {
-								case results <- res:
-								case <-ctx.Done():
-									return
-								}
-							}
-							continue
-						}
-
-						if sampler.IfCondition != "" {
-							if !session.Evaluator.EvaluateLogic(sampler.IfCondition) {
-								continue
-							}
-						}
-
-						if ctx.Err() != nil || (a.dur > 0 && time.Since(attackStart) >= a.dur) {
-							break
-						}
-
-						// Apply timers BEFORE the sampler runs
-						var totalDelay time.Duration
-						for _, timer := range tg.Timers {
-							delayStr := session.Evaluator.Evaluate(timer.Delay)
-							rangeStr := session.Evaluator.Evaluate(timer.Range)
-
-							delayMs, _ := strconv.ParseFloat(delayStr, 64)
-							rangeMs, _ := strconv.ParseFloat(rangeStr, 64)
-
-							var sleepMs float64
-							switch timer.Type {
-							case "ConstantTimer":
-								sleepMs = delayMs
-							case "UniformRandomTimer":
-								sleepMs = delayMs + rand.Float64()*rangeMs
-							case "GaussianRandomTimer":
-								sleepMs = delayMs + math.Abs(rand.NormFloat64())*rangeMs
-							case "PoissonRandomTimer":
-								sleepMs = delayMs + poissonDelay(rangeMs)
-							case "SyncTimer":
-								if barrier, ok := syncBarriers[timer]; ok {
-									barrier.Wait(ctx)
-								}
-							}
-							if sleepMs > 0 {
-								totalDelay += time.Duration(sleepMs) * time.Millisecond
-							}
-						}
-						if totalDelay > 0 {
-							time.Sleep(totalDelay)
-						}
-
-						// Evaluate variables in URL; EvaluatePreProcessors may return a modified URL
-						// (prevents data race by not mutating the shared sampler.Request.URL directly)
-
-						var res *vegeta.Result
-						var bodyBytes []byte
-						var resp *http.Response
-						var req *http.Request
-						var err error
-
-						preProcessedURL := EvaluatePreProcessors(session, sampler)
-						var reqURL string
-						if preProcessedURL != "" {
-							reqURL = preProcessedURL
-						} else {
-							reqURL = session.Evaluator.Evaluate(sampler.Request.URL)
-						}
-						if sampler.IsSSESampler {
-							if strings.HasPrefix(reqURL, "https://") {
-								reqURL = "sses://" + strings.TrimPrefix(reqURL, "https://")
-							} else if strings.HasPrefix(reqURL, "http://") {
-								reqURL = "sse://" + strings.TrimPrefix(reqURL, "http://")
-							} else if !strings.HasPrefix(reqURL, "sse://") && !strings.HasPrefix(reqURL, "sses://") {
-								reqURL = "sse://" + reqURL
-							}
-						}
-						method := sampler.Request.Method
-						bodyStr := session.Evaluator.Evaluate(sampler.Request.BodyTemplate)
-
-						if sampler.IsAccessLogSampler && sampler.AccessLogFile != "" {
-							streamer := a.getAccessLogStreamer(ctx, session.Evaluator.Evaluate(sampler.AccessLogFile), a.maxW)
-							select {
-							case entry, ok := <-streamer.C:
-								if ok {
-									method = entry.Method
-									// Append path to domain/port
-									reqURL += entry.Path
-								}
-							case <-ctx.Done():
-								return
-							}
-						}
-
-						if sampler.IsOSProcessSampler {
-							cmdStr := session.Evaluator.Evaluate(sampler.OSCommand)
-							dirStr := session.Evaluator.Evaluate(sampler.OSDirectory)
-							timeoutStr := session.Evaluator.Evaluate(sampler.OSTimeout)
-							var args []string
-							for _, a := range sampler.OSArguments {
-								args = append(args, session.Evaluator.Evaluate(a))
-							}
-
-							execCtx := ctx
-							var cancel context.CancelFunc
-							if timeoutStr != "" && timeoutStr != "0" {
-								if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
-									execCtx, cancel = context.WithTimeout(ctx, time.Duration(t)*time.Millisecond)
-								}
-							}
-
-							cmd := exec.CommandContext(execCtx, cmdStr, args...)
-							if dirStr != "" {
-								cmd.Dir = dirStr
-							}
-							if len(sampler.OSEnvironment) > 0 {
-								cmd.Env = os.Environ()
-								for k, v := range sampler.OSEnvironment {
-									cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", session.Evaluator.Evaluate(k), session.Evaluator.Evaluate(v)))
-								}
-							}
-
-							start := time.Now()
-							output, err := cmd.CombinedOutput()
-							elapsed := time.Since(start)
-
-							if cancel != nil {
-								cancel()
-							}
-
-							attackName := sampler.Name
-							if sampler.TransactionName != "" && sampler.TransactionParent {
-								attackName = sampler.TransactionName
-							}
-
-							statusCode := uint16(200)
-							errMsg := ""
-
-							if err != nil {
-								if _, isExitError := err.(*exec.ExitError); !isExitError {
-									// Command failed to run entirely (e.g. executable not found)
-									statusCode = 500
-									errMsg = err.Error()
-								}
-							}
-
-							if statusCode == 200 && sampler.OSCheckReturnCode {
-								expectedCodeStr := session.Evaluator.Evaluate(sampler.OSExpectedReturnCode)
-								expectedCode, parseErr := strconv.Atoi(expectedCodeStr)
-								if parseErr != nil {
-									expectedCode = 0 // JMeter default if empty/invalid is 0
-								}
-
-								exitCode := 0
-								if cmd.ProcessState != nil {
-									exitCode = cmd.ProcessState.ExitCode()
-								}
-								if exitCode != expectedCode {
-									statusCode = 500
-									errMsg = fmt.Sprintf("Expected exit code %d but got %d", expectedCode, exitCode)
-								}
-							}
-
-							res = &vegeta.Result{
-								Attack:    attackName,
-								Seq:       uint64(step),
-								Timestamp: start,
-								Latency:   elapsed,
-								Method:    "OS",
-								URL:       cmdStr,
-								Code:      statusCode,
-								Error:     errMsg,
-								BytesIn:   uint64(len(output)),
-							}
-
-							bodyBytes = output
-							session.LastResponseBody = bodyBytes
-
-							resp = &http.Response{
-								StatusCode: int(statusCode),
-								Status:     "OK",
-								Header:     make(http.Header),
-							}
-						} else {
-							if len(sampler.Request.Arguments) > 0 {
-								var args []string
-								for _, arg := range sampler.Request.Arguments {
-									k := url.QueryEscape(session.Evaluator.Evaluate(arg[0]))
-									v := url.QueryEscape(session.Evaluator.Evaluate(arg[1]))
-									args = append(args, k+"="+v)
-								}
-								qs := strings.Join(args, "&")
-								if method == "GET" || method == "DELETE" {
-									if strings.Contains(reqURL, "?") {
-										reqURL += "&" + qs
-									} else {
-										reqURL += "?" + qs
-									}
-								} else {
-									if bodyStr != "" {
-										bodyStr += "&" + qs
-									} else {
-										bodyStr = qs
-									}
-								}
-							}
-
-							var bodyReader io.Reader
-							if bodyStr != "" {
-								bodyReader = strings.NewReader(bodyStr)
-							}
-							reqCtx := httpCtx // use httpCtx: not bound to duration timeout
-							var cancel context.CancelFunc
-							for _, p := range sampler.PreProcessors {
-								if st, ok := p.(*domain.SampleTimeout); ok {
-									timeoutStr := session.Evaluator.Evaluate(st.Timeout)
-									if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
-										reqCtx, cancel = context.WithTimeout(reqCtx, time.Duration(t)*time.Millisecond)
-									}
-								}
-							}
-
-							req, err = http.NewRequestWithContext(reqCtx, method, reqURL, bodyReader)
-							if err != nil {
-								if cancel != nil {
-									cancel()
-								}
-								// Record a failure result so it appears in the report instead of silently skipping
-								failRes := &vegeta.Result{
-									Attack:    sampler.Name,
-									Seq:       uint64(step),
-									Timestamp: time.Now(),
-									Latency:   0,
-									Method:    method,
-									URL:       reqURL,
-									Error:     fmt.Sprintf("invalid request: %v", err),
-								}
-								select {
-								case results <- failRes:
-								case <-httpCtx.Done():
-									return
-								}
-								continue
-							}
-
-							// Evaluate headers
-							for k, v := range sampler.Request.Headers {
-								req.Header.Set(k, session.Evaluator.Evaluate(v))
-							}
-
-							if cacheManager != nil {
-								if entry, ok := session.Cache[reqURL]; ok {
-									if entry.ETag != "" {
-										req.Header.Set("If-None-Match", entry.ETag)
-									}
-									if entry.LastModified != "" {
-										req.Header.Set("If-Modified-Since", entry.LastModified)
-									}
-								}
-							}
-
-							if authManager != nil {
-								for _, auth := range authManager.AuthList {
-									authUrl := session.Evaluator.Evaluate(auth.URL)
-									if strings.HasPrefix(reqURL, authUrl) {
-										user := session.Evaluator.Evaluate(auth.Username)
-										pass := session.Evaluator.Evaluate(auth.Password)
-										mech := session.Evaluator.Evaluate(auth.Mechanism)
-										if mech == "" || mech == "BASIC_DIGEST" || mech == "BASIC" {
-											authStr := user + ":" + pass
-											b64 := base64.StdEncoding.EncodeToString([]byte(authStr))
-											req.Header.Set("Authorization", "Basic "+b64)
-										}
-									}
-								}
-							}
-							currentFollowRedirects = sampler.Request.FollowRedirects
-
-							start := time.Now()
-							if reqCtx.Err() != nil {
-								fmt.Printf("[DEBUG] reqCtx is ALREADY cancelled before Do(): %v\n", reqCtx.Err())
-							}
-							resp, err = sessionClient.Do(req)
-							elapsed := time.Since(start)
-							if cancel != nil {
-								cancel()
-							}
-
-							attackName := sampler.Name
-							if sampler.TransactionName != "" && sampler.TransactionParent {
-								attackName = sampler.TransactionName
-							}
-
-							res = &vegeta.Result{
-								Attack:    attackName,
-								Seq:       uint64(step),
-								Timestamp: start,
-								Latency:   elapsed,
-								Method:    method,
-								URL:       reqURL,
-							}
-
-							if err != nil {
-								res.Error = err.Error()
-							} else {
-								res.Code = uint16(resp.StatusCode)
-								needsBody := true // Always read body in stateful mode for subsequent PreProcessors (like HTMLLinkParser)
-
-								bufPtr := bufferPool.Get().(*[]byte)
-								buf := *bufPtr
-
-								if needsBody {
-									// Direct use of bytes.Buffer: optimized from 2 copies via strings.Builder to 0 copies
-									var bb bytes.Buffer
-									bb.Grow(4096)
-									// Scale max body size based on worker count to prevent OOM (MEDIUM-23)
-									var maxBodySize int64 = 5 * 1024 * 1024 // 5MB default
-									if a.maxW >= 1000 {
-										maxBodySize = 2 * 1024 * 1024
-									}
-									if a.maxW >= 500 {
-										maxBodySize = 512 * 1024
-									}
-									if !a.needsBody {
-										maxBodySize = 0
-									}
-
-									written, _ := io.CopyBuffer(&bb, io.LimitReader(resp.Body, maxBodySize), buf)
-									if written == maxBodySize {
-										rest, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
-										written += rest
-									}
-									bodyBytes = bb.Bytes()
-									res.BytesIn = uint64(written)
-								} else {
-									written, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
-									res.BytesIn = uint64(written)
-								}
-
-								_ = resp.Body.Close()  // Close first (ensures read is complete)
-								bufferPool.Put(bufPtr) // Then return to Pool
-
-								session.LastResponseBody = bodyBytes
-
-								if cacheManager != nil && (resp.StatusCode == 200 || resp.StatusCode == 304) {
-									etag := resp.Header.Get("ETag")
-									lastMod := resp.Header.Get("Last-Modified")
-									if etag != "" || lastMod != "" {
-										if len(session.Cache) < cacheManager.MaxSize {
-											session.Cache[reqURL] = &CacheEntry{
-												ETag:         etag,
-												LastModified: lastMod,
-											}
-										}
-									}
-								}
-							}
-						}
-
-						if res.Error == "" || sampler.IsOSProcessSampler {
-							// Execute extractors
-							for _, ext := range sampler.Extractors {
-								if ext == nil {
-									continue
-								}
-
-								if dbgExt, ok := ext.(*domain.DebugPostProcessor); ok {
-									// In vjm, JMeter Properties and System Properties are not explicitly loaded.
-									// We only print JMeter Variables for now.
-									dbgExt.Execute(session.Variables, nil)
-									continue
-								}
-
-								if multiExt, ok := ext.(domain.MultiExtractor); ok {
-									vals, extractOk := multiExt.ExtractMulti(bodyBytes)
-									if extractOk && len(vals) > 0 {
-										for k, v := range vals {
-											session.Variables[k] = v
-											session.Evaluator.SetVariable(k, v)
-										}
-										continue
-									}
-									// Fallback to default below if not found
-								}
-
-								val, extractOk := ext.Extract(bodyBytes)
-								if !extractOk {
-									defVal, hasDef := ext.DefaultValue()
-									if hasDef {
-										val = defVal
-									} else {
-										// JMeter removes variable if no default is provided
-										delete(session.Variables, ext.RefName())
-										session.Evaluator.SetVariable(ext.RefName(), "")
-										continue
-									}
-								}
-								session.Variables[ext.RefName()] = val
-								session.Evaluator.SetVariable(ext.RefName(), val)
-							}
-
-							// Execute assertions
-							for _, ast := range sampler.Assertions {
-								if err := evaluateAssertion(ast, resp, bodyBytes, session, elapsed); err != nil {
-									res.Error = err.Error()
-									break // fail fast on first assertion error
-								}
-							}
-						}
-
-						session.LastSampleOK = (res.Code < 400 && res.Error == "")
-						if session.LastSampleOK {
-							session.Variables["JMeterThread.last_sample_ok"] = "true"
-							session.Evaluator.SetVariable("JMeterThread.last_sample_ok", "true")
-						} else {
-							session.Variables["JMeterThread.last_sample_ok"] = "false"
-							session.Evaluator.SetVariable("JMeterThread.last_sample_ok", "false")
-						}
-
-						select {
-						case results <- res:
-						case <-httpCtx.Done(): // only drop result on explicit stop, not duration expiry
-							return
-						}
-
-						// Evaluate Result Status Action Handler
-						if res.Code >= 400 || res.Error != "" {
-							action := session.Tg.OnSampleError
-							for _, ext := range sampler.Extractors {
-								if ra, ok := ext.(*domain.ResultAction); ok {
-									action = ra.Action
-									break
-								}
-							}
-
-							switch action {
-							case 1: // Stop Thread
-								return
-							case 2, 3: // Stop Test, Stop Test Now
-								atomic.StoreInt32(&a.stopped, 1)
-								if cancelFn, ok := ctx.Value(domain.CancelTestKey).(context.CancelFunc); ok {
-									cancelFn()
-								}
-								return
-							case 4: // Start Next Thread Loop
-								break samplerLoop
-							case 5: // Go to next loop iteration
-								if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
-									step = loopEnd - 1
-									continue samplerLoop
-								}
-								break samplerLoop
-							case 6: // Break Current Loop
-								if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
-									step = loopEnd
-									continue samplerLoop
-								}
-								break samplerLoop
-							}
-						}
-					}
-				}
+				worker.run(ctx, httpCtx, &wg)
 			}(i)
 		}
 
@@ -2078,4 +961,1166 @@ func findEnclosingLoopEnd(samplers []*domain.Sampler, currentStep int) int {
 		}
 	}
 	return -1
+}
+
+type statefulWorker struct {
+	id                    uint64
+	attacker              *StatefulAttacker
+	plan                  *domain.TestPlan
+	globalEval            evaluator.Evaluator
+	sharedCSVs            []*CSVRuntime
+	sharedCounters        []*CounterRuntime
+	sharedRandomVariables []*RandomVariableRuntime
+	syncBarriers          map[*domain.Timer]*SyncBarrier
+	dnsManager            *domain.DNSCacheManager
+	attackStart           time.Time
+	results               chan<- *vegeta.Result
+	tokens                <-chan struct{}
+}
+
+func (w *statefulWorker) run(ctx context.Context, httpCtx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	sessionID := w.id
+	a := w.attacker
+	plan := w.plan
+	globalEval := w.globalEval
+	sharedCSVs := w.sharedCSVs
+	sharedCounters := w.sharedCounters
+	sharedRandomVariables := w.sharedRandomVariables
+	syncBarriers := w.syncBarriers
+	_ = w.dnsManager
+	attackStart := w.attackStart
+	results := w.results
+	tokens := w.tokens
+
+	if len(plan.ThreadGroups) == 0 {
+		return
+	}
+	tgIdx := int(sessionID) % len(plan.ThreadGroups)
+	tg := plan.ThreadGroups[tgIdx]
+	session := NewSession(sessionID, plan, tg, globalEval.Clone())
+
+	var localRandomVariables []*RandomVariableRuntime
+	for _, rv := range plan.RandomVariables {
+		if rv.PerThread {
+			localRandomVariables = append(localRandomVariables, parseRandomVariable(rv))
+		}
+	}
+	for _, rv := range tg.RandomVariables {
+		if rv.PerThread {
+			localRandomVariables = append(localRandomVariables, parseRandomVariable(rv))
+		}
+	}
+
+	var localCSVs []*CSVRuntime
+	for _, scsv := range sharedCSVs {
+		if scsv.Config.ShareMode == "shareMode.thread" {
+			var next int64 = 0
+			localCSVs = append(localCSVs, &CSVRuntime{
+				Config:   scsv.Config,
+				Lines:    scsv.Lines,
+				Next:     &next,
+				VarNames: scsv.VarNames,
+			})
+		} else {
+			localCSVs = append(localCSVs, scsv)
+		}
+	}
+
+	var localCounters []*CounterRuntime
+	for _, sc := range sharedCounters {
+		if sc.Config.PerUser {
+			curr := sc.Start
+			localCounters = append(localCounters, &CounterRuntime{
+				Config:  sc.Config,
+				Current: &curr,
+				Start:   sc.Start,
+				End:     sc.End,
+				Incr:    sc.Incr,
+			})
+		} else {
+			localCounters = append(localCounters, sc)
+		}
+	}
+
+	var cookieManager *domain.CookieManager
+	if plan.CookieManager != nil {
+		cookieManager = plan.CookieManager
+	}
+	if tg.CookieManager != nil {
+		cookieManager = tg.CookieManager
+	}
+
+	var cacheManager *domain.CacheManager
+	if plan.CacheManager != nil {
+		cacheManager = plan.CacheManager
+	}
+	if tg.CacheManager != nil {
+		cacheManager = tg.CacheManager
+	}
+
+	var authManager *domain.AuthManager
+	if plan.AuthManager != nil {
+		authManager = plan.AuthManager
+	}
+	if tg.AuthManager != nil {
+		authManager = tg.AuthManager
+	}
+
+	createCookieJar := func() http.CookieJar {
+		jar, _ := cookiejar.New(nil)
+		if cookieManager != nil {
+			for _, c := range cookieManager.Cookies {
+				domainStr := session.Evaluator.Evaluate(c.Domain)
+				pathStr := session.Evaluator.Evaluate(c.Path)
+				if pathStr == "" {
+					pathStr = "/"
+				}
+				u := &url.URL{
+					Scheme: "http",
+					Host:   domainStr,
+					Path:   pathStr,
+				}
+				if c.Secure {
+					u.Scheme = "https"
+				}
+				hc := &http.Cookie{
+					Name:   session.Evaluator.Evaluate(c.Name),
+					Value:  session.Evaluator.Evaluate(c.Value),
+					Domain: domainStr,
+					Path:   pathStr,
+					Secure: c.Secure,
+				}
+				jar.SetCookies(u, []*http.Cookie{hc})
+			}
+		}
+		return jar
+	}
+
+	sseTransport := NewSSERoundTripper(a.transport)
+	wsTransport := NewWSRoundTripper(sseTransport)
+	currentFollowRedirects := true
+	sessionClient := &http.Client{
+		Transport: wsTransport,
+		Timeout:   30 * time.Second,
+		Jar:       createCookieJar(),
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !currentFollowRedirects {
+				return http.ErrUseLastResponse
+			}
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return nil
+		},
+	}
+
+	// [PERF] Calculate allRVs once outside the loop (removes heap allocation per iteration)
+	allRVs := make([]*RandomVariableRuntime, 0, len(sharedRandomVariables)+len(localRandomVariables))
+	allRVs = append(allRVs, sharedRandomVariables...)
+	allRVs = append(allRVs, localRandomVariables...)
+
+	// Ensure any held locks and WebSocket connections are released when worker exits
+	defer func() {
+		wsTransport.CloseAll()
+		sseTransport.CloseAll()
+		for name, mu := range session.HeldLocks {
+			mu.Unlock()
+			delete(session.HeldLocks, name)
+		}
+	}()
+	tgLoops := 0
+	tgContinueForever := true
+	if len(plan.ThreadGroups) > 0 {
+		tgLoops = plan.ThreadGroups[0].Loops
+		tgContinueForever = plan.ThreadGroups[0].ContinueForever
+	}
+	iterCount := 0
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		if !tgContinueForever && tgLoops > 0 {
+			if iterCount >= tgLoops {
+				return
+			}
+			iterCount++
+		}
+
+		if cookieManager != nil && cookieManager.ClearEachIteration {
+			sessionClient.Jar = createCookieJar()
+		}
+		if cacheManager != nil && cacheManager.ClearEachIteration {
+			session.Cache = make(map[string]*CacheEntry)
+		}
+
+		for _, rv := range allRVs {
+			var val int64
+			if rv.Config.PerThread {
+				val = rv.Min + rv.Rand.Int64N(rv.Max-rv.Min+1)
+			} else {
+				rv.Mutex.Lock()
+				val = rv.Min + rv.Rand.Int64N(rv.Max-rv.Min+1)
+				rv.Mutex.Unlock()
+			}
+			formatStr := rv.Config.Format
+			if formatStr == "" {
+				session.Evaluator.SetVariable(rv.Config.Name, strconv.FormatInt(val, 10))
+			} else {
+				session.Evaluator.SetVariable(rv.Config.Name, formatRandomVariable(val, formatStr))
+			}
+		}
+
+		// Bind CSV variables at the start of each iteration
+		for _, csv := range localCSVs {
+			if len(csv.Lines) == 0 {
+				continue
+			}
+			idx := atomic.AddInt64(csv.Next, 1) - 1
+			if !csv.Config.Recycle && int(idx) >= len(csv.Lines) {
+				if csv.Config.StopThread {
+					return // Stop this thread
+				}
+				continue
+			}
+			row := csv.Lines[int(idx)%len(csv.Lines)]
+			// [PERF] VarNames are parsed only once during parseCSV (removes strings.Split per iteration)
+			for i, vName := range csv.VarNames {
+				if vName != "" && i < len(row) {
+					session.Variables[vName] = row[i]
+					session.Evaluator.SetVariable(vName, row[i])
+				}
+			}
+		}
+
+		// Evaluate Counters
+		for _, c := range localCounters {
+			var val int64
+			if c.End != 0 {
+				for {
+					curr := atomic.LoadInt64(c.Current)
+					val = curr
+					next := curr + c.Incr
+					if next > c.End {
+						next = c.Start
+					}
+					if atomic.CompareAndSwapInt64(c.Current, curr, next) {
+						break
+					}
+				}
+			} else {
+				val = atomic.AddInt64(c.Current, c.Incr) - c.Incr
+			}
+
+			var valStr string
+			if c.Config.Format != "" {
+				formatLen := len(c.Config.Format)
+				valStr = fmt.Sprintf("%0*d", formatLen, val)
+			} else {
+				valStr = strconv.FormatInt(val, 10)
+			}
+			session.Variables[c.Config.Name] = valStr
+			session.Evaluator.SetVariable(c.Config.Name, valStr)
+		}
+
+		elapsed := time.Since(attackStart)
+		if a.dur > 0 && elapsed >= a.dur {
+			return
+		}
+		if atomic.LoadInt32(&a.stopped) == 1 {
+			return
+		}
+
+		if a.workerPacer != nil {
+			wait, stop := a.workerPacer(sessionID, time.Since(attackStart))
+			if stop {
+				return
+			}
+			if wait > 0 {
+				select {
+				case <-time.After(wait):
+				case <-ctx.Done():
+					return
+				}
+			}
+		} else {
+			select {
+			case _, ok := <-tokens:
+				if !ok {
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+
+		// Execute samplers sequentially
+		step := 0
+	samplerLoop:
+		for ; ; step++ {
+			if step >= len(session.Tg.Samplers) {
+				if len(session.CallStack) > 0 {
+					frame := session.CallStack[len(session.CallStack)-1]
+					session.CallStack = session.CallStack[:len(session.CallStack)-1]
+					session.Tg = frame.Tg
+					step = frame.Step
+					continue samplerLoop
+				}
+				break samplerLoop
+			}
+
+			if jump, ok := session.InterleaveJump[step]; ok {
+				delete(session.InterleaveJump, step)
+				step = jump
+			}
+			sampler := session.Tg.Samplers[step]
+			session.Evaluator.SetSamplerName(sampler.Name)
+
+			if sampler.IsControlFlow {
+				switch sampler.ControlType {
+				case "LoopStart":
+					if _, ok := session.LoopCounters[sampler.LoopId]; !ok {
+						if sampler.LoopContinue {
+							session.LoopCounters[sampler.LoopId] = -1
+						} else {
+							cStr := session.Evaluator.Evaluate(sampler.LoopCountExpr)
+							c, err := strconv.Atoi(cStr)
+							if err != nil || (c < 1 && c != -1) {
+								c = 1 // default or invalid
+							}
+							session.LoopCounters[sampler.LoopId] = c
+						}
+					}
+				case "LoopEnd":
+					if count, ok := session.LoopCounters[sampler.LoopId]; ok {
+						if count == -1 || count > 1 {
+							if count > 1 {
+								session.LoopCounters[sampler.LoopId] = count - 1
+							}
+							// Subtract 1 to compensate for the step++ in the loop (consistent with WhileEnd/ForEachEnd)
+							step = sampler.LoopJumpIndex - 1
+						} else {
+							delete(session.LoopCounters, sampler.LoopId) // loop done
+						}
+					}
+				case "WhileStart":
+					condStr := sampler.WhileCondition
+					var shouldContinue bool
+					if condStr != "" && strings.ToUpper(condStr) != "LAST" {
+						shouldContinue = session.Evaluator.EvaluateLogic(condStr)
+					} else if strings.ToUpper(condStr) == "LAST" {
+						shouldContinue = session.LastSampleOK
+					} else {
+						// condStr == "" means infinite loop in JMeter
+						shouldContinue = true
+					}
+
+					if !shouldContinue {
+						step = sampler.LoopJumpIndex
+						delete(session.LoopCounters, sampler.LoopId)
+					}
+				case "WhileEnd":
+					// Jump back to WhileStart so condition is evaluated again
+					step = sampler.LoopJumpIndex - 1
+				case "CriticalStart":
+					lockName := session.Evaluator.Evaluate(sampler.CriticalLockName)
+					if lockName == "" {
+						lockName = "global_lock"
+					}
+					// If we don't already hold it
+					if _, held := session.HeldLocks[lockName]; !held {
+						muIntf, _ := globalLocks.LoadOrStore(lockName, &sync.Mutex{})
+						mu := muIntf.(*sync.Mutex)
+						mu.Lock()
+						session.HeldLocks[lockName] = mu
+					}
+				case "CriticalEnd":
+					lockName := session.Evaluator.Evaluate(sampler.CriticalLockName)
+					if lockName == "" {
+						lockName = "global_lock"
+					}
+					if mu, held := session.HeldLocks[lockName]; held {
+						mu.Unlock()
+						delete(session.HeldLocks, lockName)
+					}
+				case "RuntimeStart":
+					// Initialize deadline if it doesn't exist
+					if _, ok := session.RuntimeDeadlines[sampler.LoopId]; !ok {
+						secStr := session.Evaluator.Evaluate(sampler.RuntimeSecondsExpr)
+						sec, err := strconv.ParseFloat(secStr, 64)
+						if err != nil || sec < 0 {
+							sec = 0
+						}
+						if sec == 0 {
+							// 0 means it should not execute at all (or run forever? JMeter says 0 means run 0 seconds)
+							// Wait, if 0, it means run 0 seconds, so exit immediately.
+							step = sampler.BlockEndIndex
+							continue
+						} else {
+							session.RuntimeDeadlines[sampler.LoopId] = time.Now().Add(time.Duration(sec * float64(time.Second)))
+						}
+					}
+
+					// Check if deadline exceeded
+					if deadline, ok := session.RuntimeDeadlines[sampler.LoopId]; ok {
+						if time.Now().After(deadline) {
+							// Exit loop: jump to RuntimeEnd
+							step = sampler.BlockEndIndex
+							delete(session.RuntimeDeadlines, sampler.LoopId) // reset for next Thread iteration
+							continue
+						}
+					}
+				case "RuntimeEnd":
+					// Jump back to RuntimeStart to check deadline
+					step = sampler.LoopJumpIndex - 1
+				case "ForEachStart":
+					// Initialize if not exists
+					if _, ok := session.LoopCounters[sampler.LoopId]; !ok {
+						startIdx := 0
+						if sampler.ForEachStartIndex != "" {
+							if val, err := strconv.Atoi(session.Evaluator.Evaluate(sampler.ForEachStartIndex)); err == nil {
+								startIdx = val
+							}
+						}
+						session.LoopCounters[sampler.LoopId] = startIdx + 1
+					}
+
+					idx := session.LoopCounters[sampler.LoopId]
+
+					// Check endIndex if specified
+					if sampler.ForEachEndIndex != "" {
+						if endIdx, err := strconv.Atoi(session.Evaluator.Evaluate(sampler.ForEachEndIndex)); err == nil {
+							if idx > endIdx {
+								// exit loop
+								delete(session.LoopCounters, sampler.LoopId)
+								step = sampler.LoopJumpIndex
+								continue
+							}
+						}
+					}
+
+					// Construct var name
+					sep := ""
+					if sampler.ForEachUseSeparator {
+						sep = "_"
+					}
+					inputVarName := fmt.Sprintf("%s%s%d", session.Evaluator.Evaluate(sampler.ForEachInputVal), sep, idx)
+
+					valStr := session.Evaluator.Evaluate("${" + inputVarName + "}")
+					if valStr == "${"+inputVarName+"}" {
+						// Variable does not exist, exit loop
+						delete(session.LoopCounters, sampler.LoopId)
+						step = sampler.LoopJumpIndex
+						continue
+					}
+
+					// Set return variable
+					returnVar := session.Evaluator.Evaluate(sampler.ForEachReturnVal)
+					if returnVar != "" {
+						session.Variables[returnVar] = valStr
+						session.Evaluator.SetVariable(returnVar, valStr)
+					}
+				case "ForEachEnd":
+					session.LoopCounters[sampler.LoopId]++
+					step = sampler.LoopJumpIndex - 1 // jump back to ForEachStart
+				case "ThroughputStart":
+					maxStr := session.Evaluator.Evaluate(sampler.ThroughputMaxExpr)
+					maxVal, err := strconv.ParseFloat(maxStr, 64)
+					if err != nil || maxVal < 0 {
+						maxVal = 0
+					}
+
+					shouldExecute := false
+					if sampler.ThroughputStyle == 1 {
+						// Percent Executions (0.0 to 100.0)
+						if maxVal >= 100.0 {
+							shouldExecute = true
+						} else if maxVal > 0 {
+							shouldExecute = (rand.Float64() * 100.0) < maxVal
+						}
+					} else {
+						// Total Executions
+						maxTotal := int64(maxVal)
+						if maxTotal > 0 {
+							if sampler.ThroughputPerThread {
+								// Track per thread (Session)
+								if session.LoopCounters[sampler.LoopId] < int(maxTotal) {
+									shouldExecute = true
+									session.LoopCounters[sampler.LoopId]++
+								}
+							} else {
+								// Track globally
+								muIntf, _ := globalThroughputLocks.LoadOrStore(sampler.LoopId, &GlobalThroughputState{})
+								state := muIntf.(*GlobalThroughputState)
+
+								current := atomic.AddInt64(&state.Executions, 1)
+								if current <= maxTotal {
+									shouldExecute = true
+								}
+							}
+						}
+					}
+
+					if !shouldExecute {
+						step = sampler.BlockEndIndex
+					}
+				case "ThroughputEnd":
+					// Just fall through
+				case "InterleaveStart":
+					session.LoopCounters[sampler.LoopId]++
+					if len(sampler.InterleaveChildStarts) > 0 {
+						childIndex := (session.LoopCounters[sampler.LoopId] - 1) % len(sampler.InterleaveChildStarts)
+						startStep := sampler.InterleaveChildStarts[childIndex]
+						endStep := sampler.InterleaveChildEnds[childIndex]
+
+						// When step reaches endStep + 1, jump to InterleaveEnd
+						session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+
+						// jump to the child
+						step = startStep - 1
+					} else {
+						// No children, just skip to end
+						step = sampler.BlockEndIndex
+					}
+				case "InterleaveEnd":
+					// Just fall through
+				case "OnceOnlyStart":
+					if session.LoopCounters[sampler.LoopId] > 0 {
+						step = sampler.BlockEndIndex
+					} else {
+						session.LoopCounters[sampler.LoopId]++
+					}
+				case "OnceOnlyEnd":
+					// Just fall through
+				case "ModuleCall":
+					// Find target node in plan.ThreadGroups
+					var targetTg *domain.ThreadGroup
+					if len(sampler.ModuleTargetNodePath) > 0 {
+						targetName := sampler.ModuleTargetNodePath[len(sampler.ModuleTargetNodePath)-1]
+						for _, ptg := range session.Plan.ThreadGroups {
+							if ptg.Name == targetName {
+								targetTg = ptg
+								break
+							}
+						}
+					}
+					if targetTg != nil && len(targetTg.Samplers) > 0 {
+						session.CallStack = append(session.CallStack, CallFrame{Tg: session.Tg, Step: step})
+						session.Tg = targetTg
+						step = -1 // will be 0 on next iteration
+					}
+				case "SwitchStart":
+					if len(sampler.SwitchChildStarts) > 0 {
+						switchVal := session.Evaluator.Evaluate(sampler.SwitchValueExpr)
+						selectedIndex := 0 // default to first child
+						if switchVal != "" {
+							// Try as index
+							if idx, err := strconv.Atoi(switchVal); err == nil {
+								if idx >= 0 && idx < len(sampler.SwitchChildStarts) {
+									selectedIndex = idx
+								}
+							} else {
+								// Try as name matching
+								for i, name := range sampler.SwitchChildNames {
+									if name == switchVal {
+										selectedIndex = i
+										break
+									}
+								}
+							}
+						}
+
+						startStep := sampler.SwitchChildStarts[selectedIndex]
+						endStep := sampler.SwitchChildEnds[selectedIndex]
+
+						session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+						step = startStep - 1
+					} else {
+						step = sampler.BlockEndIndex
+					}
+				case "SwitchEnd":
+					// Just fall through
+				case "RandomStart":
+					if len(sampler.RandomChildStarts) > 0 {
+						// Choose a random child
+						childIndex := rand.IntN(len(sampler.RandomChildStarts))
+						startStep := sampler.RandomChildStarts[childIndex]
+						endStep := sampler.RandomChildEnds[childIndex]
+
+						// When step reaches endStep + 1, jump to RandomEnd
+						session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+
+						// jump to the child
+						step = startStep - 1
+					} else {
+						step = sampler.BlockEndIndex
+					}
+				case "RandomEnd":
+					// Just fall through
+				case "RandomOrderStart":
+					state := session.RandomOrderState[sampler.LoopId]
+					if state == nil || state.CurrentIndex >= len(sampler.RandomOrderChildStarts) {
+						order := make([]int, len(sampler.RandomOrderChildStarts))
+						for j := range order {
+							order[j] = j
+						}
+						rand.Shuffle(len(order), func(i, j int) {
+							order[i], order[j] = order[j], order[i]
+						})
+						state = &RandomOrderState{
+							Order:        order,
+							CurrentIndex: 0,
+						}
+						session.RandomOrderState[sampler.LoopId] = state
+					}
+					if state.CurrentIndex < len(sampler.RandomOrderChildStarts) {
+						childIndex := state.Order[state.CurrentIndex]
+						startStep := sampler.RandomOrderChildStarts[childIndex]
+						endStep := sampler.RandomOrderChildEnds[childIndex]
+
+						state.CurrentIndex++
+
+						if state.CurrentIndex < len(sampler.RandomOrderChildStarts) {
+							// More children left, jump back to RandomOrderStart
+							session.InterleaveJump[endStep+1] = step
+						} else {
+							// Last child, jump out of controller
+							session.InterleaveJump[endStep+1] = sampler.BlockEndIndex
+						}
+
+						step = startStep - 1
+					} else {
+						step = sampler.BlockEndIndex
+					}
+				case "RandomOrderEnd":
+					// Just fall through
+				case "TestAction":
+					switch sampler.TestActionAction {
+					case 1: // Pause
+						durStr := session.Evaluator.Evaluate(sampler.TestActionDuration)
+						if ms, err := strconv.Atoi(durStr); err == nil && ms > 0 {
+							select {
+							case <-time.After(time.Duration(ms) * time.Millisecond):
+							case <-ctx.Done():
+								return
+							}
+						}
+					case 0: // Stop Thread
+						return
+					case 2, 3: // Stop Test, Stop Test Now
+						atomic.StoreInt32(&a.stopped, 1)
+						if cancelFn, ok := ctx.Value(domain.CancelTestKey).(context.CancelFunc); ok {
+							cancelFn()
+						}
+						return
+					case 4: // Start Next Thread Loop
+						break samplerLoop
+					case 5: // Go to next loop iteration
+						if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+							step = loopEnd - 1
+							continue samplerLoop
+						}
+						break samplerLoop
+					case 6: // Break Current Loop
+						if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+							step = loopEnd
+							continue samplerLoop
+						}
+						break samplerLoop
+					}
+				case "DebugSampler":
+					var body bytes.Buffer
+					if sampler.DebugJMeterVariables {
+						for k, v := range session.Variables {
+							body.WriteString(k + "=" + v + "\n")
+						}
+						log.Printf("[DebugSampler] Variables: %v", session.Variables)
+					}
+					if sampler.DebugJMeterProperties || sampler.DebugSystemProperties {
+						body.WriteString("=== Properties ===\n")
+						// For now, we only have one set of properties in Evaluator
+						props := session.Evaluator.GetAllProperties()
+						for k, v := range props {
+							body.WriteString(k + "=" + v + "\n")
+						}
+						if sampler.DebugJMeterProperties {
+							log.Printf("[DebugSampler] JMeterProperties requested")
+						}
+						if sampler.DebugSystemProperties {
+							log.Printf("[DebugSampler] SystemProperties requested")
+						}
+					}
+					res := &vegeta.Result{
+						Attack:    sampler.Name,
+						Seq:       uint64(step),
+						Timestamp: time.Now(),
+						Latency:   0,
+						Method:    "DEBUG",
+						URL:       "DebugSampler",
+						Code:      200,
+						BytesIn:   uint64(body.Len()),
+					}
+					select {
+					case results <- res:
+					case <-ctx.Done():
+						return
+					}
+				}
+				continue
+			}
+
+			if sampler.IfCondition != "" {
+				if !session.Evaluator.EvaluateLogic(sampler.IfCondition) {
+					continue
+				}
+			}
+
+			if ctx.Err() != nil || (a.dur > 0 && time.Since(attackStart) >= a.dur) {
+				break
+			}
+
+			// Apply timers BEFORE the sampler runs
+			var totalDelay time.Duration
+			for _, timer := range tg.Timers {
+				delayStr := session.Evaluator.Evaluate(timer.Delay)
+				rangeStr := session.Evaluator.Evaluate(timer.Range)
+
+				delayMs, _ := strconv.ParseFloat(delayStr, 64)
+				rangeMs, _ := strconv.ParseFloat(rangeStr, 64)
+
+				var sleepMs float64
+				switch timer.Type {
+				case "ConstantTimer":
+					sleepMs = delayMs
+				case "UniformRandomTimer":
+					sleepMs = delayMs + rand.Float64()*rangeMs
+				case "GaussianRandomTimer":
+					sleepMs = delayMs + math.Abs(rand.NormFloat64())*rangeMs
+				case "PoissonRandomTimer":
+					sleepMs = delayMs + poissonDelay(rangeMs)
+				case "SyncTimer":
+					if barrier, ok := syncBarriers[timer]; ok {
+						barrier.Wait(ctx)
+					}
+				}
+				if sleepMs > 0 {
+					totalDelay += time.Duration(sleepMs) * time.Millisecond
+				}
+			}
+			if totalDelay > 0 {
+				time.Sleep(totalDelay)
+			}
+
+			// Evaluate variables in URL; EvaluatePreProcessors may return a modified URL
+			// (prevents data race by not mutating the shared sampler.Request.URL directly)
+
+			var res *vegeta.Result
+			var bodyBytes []byte
+			var resp *http.Response
+			var req *http.Request
+			var err error
+
+			preProcessedURL := EvaluatePreProcessors(session, sampler)
+			var reqURL string
+			if preProcessedURL != "" {
+				reqURL = preProcessedURL
+			} else {
+				reqURL = session.Evaluator.Evaluate(sampler.Request.URL)
+			}
+			if sampler.IsSSESampler {
+				if strings.HasPrefix(reqURL, "https://") {
+					reqURL = "sses://" + strings.TrimPrefix(reqURL, "https://")
+				} else if strings.HasPrefix(reqURL, "http://") {
+					reqURL = "sse://" + strings.TrimPrefix(reqURL, "http://")
+				} else if !strings.HasPrefix(reqURL, "sse://") && !strings.HasPrefix(reqURL, "sses://") {
+					reqURL = "sse://" + reqURL
+				}
+			}
+			method := sampler.Request.Method
+			bodyStr := session.Evaluator.Evaluate(sampler.Request.BodyTemplate)
+
+			if sampler.IsAccessLogSampler && sampler.AccessLogFile != "" {
+				streamer := a.getAccessLogStreamer(ctx, session.Evaluator.Evaluate(sampler.AccessLogFile), a.maxW)
+				select {
+				case entry, ok := <-streamer.C:
+					if ok {
+						method = entry.Method
+						// Append path to domain/port
+						reqURL += entry.Path
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+
+			if sampler.IsOSProcessSampler {
+				cmdStr := session.Evaluator.Evaluate(sampler.OSCommand)
+				dirStr := session.Evaluator.Evaluate(sampler.OSDirectory)
+				timeoutStr := session.Evaluator.Evaluate(sampler.OSTimeout)
+				var args []string
+				for _, a := range sampler.OSArguments {
+					args = append(args, session.Evaluator.Evaluate(a))
+				}
+
+				execCtx := ctx
+				var cancel context.CancelFunc
+				if timeoutStr != "" && timeoutStr != "0" {
+					if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
+						execCtx, cancel = context.WithTimeout(ctx, time.Duration(t)*time.Millisecond)
+					}
+				}
+
+				cmd := exec.CommandContext(execCtx, cmdStr, args...)
+				if dirStr != "" {
+					cmd.Dir = dirStr
+				}
+				if len(sampler.OSEnvironment) > 0 {
+					cmd.Env = os.Environ()
+					for k, v := range sampler.OSEnvironment {
+						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", session.Evaluator.Evaluate(k), session.Evaluator.Evaluate(v)))
+					}
+				}
+
+				start := time.Now()
+				output, err := cmd.CombinedOutput()
+				elapsed := time.Since(start)
+
+				if cancel != nil {
+					cancel()
+				}
+
+				attackName := sampler.Name
+				if sampler.TransactionName != "" && sampler.TransactionParent {
+					attackName = sampler.TransactionName
+				}
+
+				statusCode := uint16(200)
+				errMsg := ""
+
+				if err != nil {
+					if _, isExitError := err.(*exec.ExitError); !isExitError {
+						// Command failed to run entirely (e.g. executable not found)
+						statusCode = 500
+						errMsg = err.Error()
+					}
+				}
+
+				if statusCode == 200 && sampler.OSCheckReturnCode {
+					expectedCodeStr := session.Evaluator.Evaluate(sampler.OSExpectedReturnCode)
+					expectedCode, parseErr := strconv.Atoi(expectedCodeStr)
+					if parseErr != nil {
+						expectedCode = 0 // JMeter default if empty/invalid is 0
+					}
+
+					exitCode := 0
+					if cmd.ProcessState != nil {
+						exitCode = cmd.ProcessState.ExitCode()
+					}
+					if exitCode != expectedCode {
+						statusCode = 500
+						errMsg = fmt.Sprintf("Expected exit code %d but got %d", expectedCode, exitCode)
+					}
+				}
+
+				res = &vegeta.Result{
+					Attack:    attackName,
+					Seq:       uint64(step),
+					Timestamp: start,
+					Latency:   elapsed,
+					Method:    "OS",
+					URL:       cmdStr,
+					Code:      statusCode,
+					Error:     errMsg,
+					BytesIn:   uint64(len(output)),
+				}
+
+				bodyBytes = output
+				session.LastResponseBody = bodyBytes
+
+				resp = &http.Response{
+					StatusCode: int(statusCode),
+					Status:     "OK",
+					Header:     make(http.Header),
+				}
+			} else {
+				if len(sampler.Request.Arguments) > 0 {
+					var args []string
+					for _, arg := range sampler.Request.Arguments {
+						k := url.QueryEscape(session.Evaluator.Evaluate(arg[0]))
+						v := url.QueryEscape(session.Evaluator.Evaluate(arg[1]))
+						args = append(args, k+"="+v)
+					}
+					qs := strings.Join(args, "&")
+					if method == "GET" || method == "DELETE" {
+						if strings.Contains(reqURL, "?") {
+							reqURL += "&" + qs
+						} else {
+							reqURL += "?" + qs
+						}
+					} else {
+						if bodyStr != "" {
+							bodyStr += "&" + qs
+						} else {
+							bodyStr = qs
+						}
+					}
+				}
+
+				var bodyReader io.Reader
+				if bodyStr != "" {
+					bodyReader = strings.NewReader(bodyStr)
+				}
+				reqCtx := httpCtx // use httpCtx: not bound to duration timeout
+				var cancel context.CancelFunc
+				for _, p := range sampler.PreProcessors {
+					if st, ok := p.(*domain.SampleTimeout); ok {
+						timeoutStr := session.Evaluator.Evaluate(st.Timeout)
+						if t, err := strconv.ParseInt(timeoutStr, 10, 64); err == nil && t > 0 {
+							reqCtx, cancel = context.WithTimeout(reqCtx, time.Duration(t)*time.Millisecond)
+						}
+					}
+				}
+
+				req, err = http.NewRequestWithContext(reqCtx, method, reqURL, bodyReader)
+				if err != nil {
+					if cancel != nil {
+						cancel()
+					}
+					// Record a failure result so it appears in the report instead of silently skipping
+					failRes := &vegeta.Result{
+						Attack:    sampler.Name,
+						Seq:       uint64(step),
+						Timestamp: time.Now(),
+						Latency:   0,
+						Method:    method,
+						URL:       reqURL,
+						Error:     fmt.Sprintf("invalid request: %v", err),
+					}
+					select {
+					case results <- failRes:
+					case <-httpCtx.Done():
+						return
+					}
+					continue
+				}
+
+				// Evaluate headers
+				for k, v := range sampler.Request.Headers {
+					req.Header.Set(k, session.Evaluator.Evaluate(v))
+				}
+
+				if cacheManager != nil {
+					if entry, ok := session.Cache[reqURL]; ok {
+						if entry.ETag != "" {
+							req.Header.Set("If-None-Match", entry.ETag)
+						}
+						if entry.LastModified != "" {
+							req.Header.Set("If-Modified-Since", entry.LastModified)
+						}
+					}
+				}
+
+				if authManager != nil {
+					for _, auth := range authManager.AuthList {
+						authUrl := session.Evaluator.Evaluate(auth.URL)
+						if strings.HasPrefix(reqURL, authUrl) {
+							user := session.Evaluator.Evaluate(auth.Username)
+							pass := session.Evaluator.Evaluate(auth.Password)
+							mech := session.Evaluator.Evaluate(auth.Mechanism)
+							if mech == "" || mech == "BASIC_DIGEST" || mech == "BASIC" {
+								authStr := user + ":" + pass
+								b64 := base64.StdEncoding.EncodeToString([]byte(authStr))
+								req.Header.Set("Authorization", "Basic "+b64)
+							}
+						}
+					}
+				}
+				currentFollowRedirects = sampler.Request.FollowRedirects
+
+				start := time.Now()
+				if reqCtx.Err() != nil {
+					fmt.Printf("[DEBUG] reqCtx is ALREADY cancelled before Do(): %v\n", reqCtx.Err())
+				}
+				resp, err = sessionClient.Do(req)
+				elapsed := time.Since(start)
+				if cancel != nil {
+					cancel()
+				}
+
+				attackName := sampler.Name
+				if sampler.TransactionName != "" && sampler.TransactionParent {
+					attackName = sampler.TransactionName
+				}
+
+				res = &vegeta.Result{
+					Attack:    attackName,
+					Seq:       uint64(step),
+					Timestamp: start,
+					Latency:   elapsed,
+					Method:    method,
+					URL:       reqURL,
+				}
+
+				if err != nil {
+					res.Error = err.Error()
+				} else {
+					res.Code = uint16(resp.StatusCode)
+					needsBody := true // Always read body in stateful mode for subsequent PreProcessors (like HTMLLinkParser)
+
+					bufPtr := bufferPool.Get().(*[]byte)
+					buf := *bufPtr
+
+					if needsBody {
+						// Direct use of bytes.Buffer: optimized from 2 copies via strings.Builder to 0 copies
+						var bb bytes.Buffer
+						bb.Grow(4096)
+						// Scale max body size based on worker count to prevent OOM (MEDIUM-23)
+						var maxBodySize int64 = 5 * 1024 * 1024 // 5MB default
+						if a.maxW >= 1000 {
+							maxBodySize = 2 * 1024 * 1024
+						}
+						if a.maxW >= 500 {
+							maxBodySize = 512 * 1024
+						}
+						if !a.needsBody {
+							maxBodySize = 0
+						}
+
+						written, _ := io.CopyBuffer(&bb, io.LimitReader(resp.Body, maxBodySize), buf)
+						if written == maxBodySize {
+							rest, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
+							written += rest
+						}
+						bodyBytes = bb.Bytes()
+						res.BytesIn = uint64(written)
+					} else {
+						written, _ := io.CopyBuffer(io.Discard, resp.Body, buf)
+						res.BytesIn = uint64(written)
+					}
+
+					_ = resp.Body.Close()  // Close first (ensures read is complete)
+					bufferPool.Put(bufPtr) // Then return to Pool
+
+					session.LastResponseBody = bodyBytes
+
+					if cacheManager != nil && (resp.StatusCode == 200 || resp.StatusCode == 304) {
+						etag := resp.Header.Get("ETag")
+						lastMod := resp.Header.Get("Last-Modified")
+						if etag != "" || lastMod != "" {
+							if len(session.Cache) < cacheManager.MaxSize {
+								session.Cache[reqURL] = &CacheEntry{
+									ETag:         etag,
+									LastModified: lastMod,
+								}
+							}
+						}
+					}
+				}
+			}
+
+			if res.Error == "" || sampler.IsOSProcessSampler {
+				// Execute extractors
+				for _, ext := range sampler.Extractors {
+					if ext == nil {
+						continue
+					}
+
+					if dbgExt, ok := ext.(*domain.DebugPostProcessor); ok {
+						// In vjm, JMeter Properties and System Properties are not explicitly loaded.
+						// We only print JMeter Variables for now.
+						dbgExt.Execute(session.Variables, nil)
+						continue
+					}
+
+					if multiExt, ok := ext.(domain.MultiExtractor); ok {
+						vals, extractOk := multiExt.ExtractMulti(bodyBytes)
+						if extractOk && len(vals) > 0 {
+							for k, v := range vals {
+								session.Variables[k] = v
+								session.Evaluator.SetVariable(k, v)
+							}
+							continue
+						}
+						// Fallback to default below if not found
+					}
+
+					val, extractOk := ext.Extract(bodyBytes)
+					if !extractOk {
+						defVal, hasDef := ext.DefaultValue()
+						if hasDef {
+							val = defVal
+						} else {
+							// JMeter removes variable if no default is provided
+							delete(session.Variables, ext.RefName())
+							session.Evaluator.SetVariable(ext.RefName(), "")
+							continue
+						}
+					}
+					session.Variables[ext.RefName()] = val
+					session.Evaluator.SetVariable(ext.RefName(), val)
+				}
+
+				// Execute assertions
+				for _, ast := range sampler.Assertions {
+					if err := evaluateAssertion(ast, resp, bodyBytes, session, elapsed); err != nil {
+						res.Error = err.Error()
+						break // fail fast on first assertion error
+					}
+				}
+			}
+
+			session.LastSampleOK = (res.Code < 400 && res.Error == "")
+			if session.LastSampleOK {
+				session.Variables["JMeterThread.last_sample_ok"] = "true"
+				session.Evaluator.SetVariable("JMeterThread.last_sample_ok", "true")
+			} else {
+				session.Variables["JMeterThread.last_sample_ok"] = "false"
+				session.Evaluator.SetVariable("JMeterThread.last_sample_ok", "false")
+			}
+
+			select {
+			case results <- res:
+			case <-httpCtx.Done(): // only drop result on explicit stop, not duration expiry
+				return
+			}
+
+			// Evaluate Result Status Action Handler
+			if res.Code >= 400 || res.Error != "" {
+				action := session.Tg.OnSampleError
+				for _, ext := range sampler.Extractors {
+					if ra, ok := ext.(*domain.ResultAction); ok {
+						action = ra.Action
+						break
+					}
+				}
+
+				switch action {
+				case 1: // Stop Thread
+					return
+				case 2, 3: // Stop Test, Stop Test Now
+					atomic.StoreInt32(&a.stopped, 1)
+					if cancelFn, ok := ctx.Value(domain.CancelTestKey).(context.CancelFunc); ok {
+						cancelFn()
+					}
+					return
+				case 4: // Start Next Thread Loop
+					break samplerLoop
+				case 5: // Go to next loop iteration
+					if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+						step = loopEnd - 1
+						continue samplerLoop
+					}
+					break samplerLoop
+				case 6: // Break Current Loop
+					if loopEnd := findEnclosingLoopEnd(session.Tg.Samplers, step); loopEnd != -1 {
+						step = loopEnd
+						continue samplerLoop
+					}
+					break samplerLoop
+				}
+			}
+		}
+	}
 }

@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## [v0.1.21] - 2026-08-24
+### Added
+- docs(readme): standardize project name to VJM and enhance overview
+- docs(readme): document SSE support and sampler
+
+### Fixed
+- fix(engine): resolve ForceCLI bypass bug and allow granular CLI load overrides
+
+## [v0.1.20] - 2026-08-05
+### Added
+- feat(engine): support SSESampler and resolve TIME_WAIT socket exhaustion
+
+### Fixed
+- fix(tests): Remove line breaks from GraphQL sampler string values
+- chore(tests): Configure JMX sampler test plans to use localhost
+
+## [v0.1.19] - 2026-08-04
+### Fixed
+- fix(engine): graceful shutdown on duration expiry and clarify error log
+
 ## [v0.1.18] - 2026-07-28
 ### Added
 - docs(readme): update demo video and improve document readability
