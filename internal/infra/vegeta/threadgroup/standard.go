@@ -15,9 +15,13 @@ import (
 type StandardRunner struct{}
 
 func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.TestConfig, eval evaluator.Evaluator) error {
-	dur, err := time.ParseDuration(config.Duration)
-	if err != nil {
-		return fmt.Errorf("invalid duration: %w", err)
+	var dur time.Duration
+	var err error
+	if config.Duration != "" {
+		dur, err = time.ParseDuration(config.Duration)
+		if err != nil {
+			return fmt.Errorf("invalid duration: %w", err)
+		}
 	}
 
 	var pacer vegeta.Pacer
@@ -32,32 +36,31 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 			tt = plan.ThreadGroups[0].ThroughputTimers[0] // ThreadGroup overrides Plan
 		}
 
-		if tt != nil {
-			val := eval.Evaluate(tt.Throughput)
-			throughputPerMin, _ := strconv.ParseFloat(val, 64)
-			if throughputPerMin > 0 {
-				freq := throughputPerMin / 60.0
-				if freq <= 0 {
-					freq = 1.0 // Minimum 1 RPS if defined
-				}
+		if config.Rate == 0 {
+			if tt != nil {
+				val := eval.Evaluate(tt.Throughput)
+				throughputPerMin, _ := strconv.ParseFloat(val, 64)
+				if throughputPerMin > 0 {
+					freq := throughputPerMin / 60.0
+					if freq <= 0 {
+						freq = 1.0 // Minimum 1 RPS if defined
+					}
 
-				if tt.Type == "PreciseThroughputTimer" {
-					// PoissonPacer models randomized arrivals with a mean rate
-					pacer = PoissonPacer{Freq: freq, Per: time.Second}
-				} else {
-					pacer = vegeta.ConstantPacer{Freq: int(freq), Per: time.Second}
+					if tt.Type == "PreciseThroughputTimer" {
+						pacer = PoissonPacer{Freq: freq, Per: time.Second}
+					} else {
+						pacer = vegeta.ConstantPacer{Freq: int(freq), Per: time.Second}
+					}
 				}
+			} else {
+				pacer = vegeta.ConstantPacer{Freq: 0, Per: time.Second}
 			}
 		}
 
 		if len(plan.ThreadGroups) > 0 {
 			tg := plan.ThreadGroups[0]
-			if tg.NumThreads > 0 {
+			if tg.NumThreads > 0 && config.Workers == 0 {
 				config.Workers = tg.NumThreads
-				// Default to closed-model concurrency (fire as fast as possible) unless overridden by ThroughputTimer
-				if tt == nil {
-					pacer = vegeta.ConstantPacer{Freq: 0, Per: time.Second}
-				}
 			}
 
 			if tg.Scheduler {
@@ -68,13 +71,12 @@ func (r *StandardRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 						return ctx.Err()
 					}
 				}
-				if tg.Duration > 0 {
+				if tg.Duration > 0 && config.Duration == "" {
 					dur = time.Duration(tg.Duration) * time.Second
 				}
-			} else if !tg.ContinueForever && tg.Loops > 0 {
+			} else if !tg.ContinueForever && tg.Loops > 0 && config.Duration == "" {
 				dur = 0 // Run until thread iteration limits are reached
 			}
-			fmt.Printf("[DEBUG] tg.Scheduler=%v, tg.Duration=%d, tg.ContinueForever=%v, tg.Loops=%d, Final dur=%v\n", tg.Scheduler, tg.Duration, tg.ContinueForever, tg.Loops, dur)
 		}
 	}
 

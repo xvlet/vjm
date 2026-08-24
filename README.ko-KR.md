@@ -214,13 +214,13 @@ Options:
         JMeter .jmx 파일 경로 (부하 테스트 모드 필수)
 
   -r, -rate int
-        초당 요청 수 (TPS). 기본값: 1000
+        초당 요청 수 (TPS). 기본값: 0 (JMX 설정 따름 또는 무제한)
 
   -d, -duration string
-        테스트 지속 시간. 예: 30s, 1m, 5m. 기본값: 30s
+        테스트 지속 시간. 예: 30s, 1m, 5m. 기본값: 없음 (JMX 설정 따름)
 
   -w, -workers int
-        최대 동시 워커 수. 0이면 10000을 기본값으로 사용
+        최대 동시 워커 수. 0이면 JMX 설정 따름
 
   -p string
         .properties 파일 경로. 여러 번 지정 가능
@@ -239,7 +239,7 @@ Options:
         -e 옵션과 함께 사용 필수
 
   -f, -force-cli
-        JMX 파일 내의 Thread Group 설정(Stepping 등)을 무시하고, CLI에 지정된 Rate와 Duration 값을 강제 적용.
+        JMX 시나리오의 특수 Thread Group(Stepping, Ultimate 등) 수식을 무시하고 일반 Standard 그룹으로 강제 전환.
 
   -jmeter-home string
         JMETER_HOME 경로. 환경변수 $JMETER_HOME 자동 참조

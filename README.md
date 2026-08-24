@@ -215,13 +215,13 @@ Options:
         Path to JMeter .jmx file (Required for load testing mode)
 
   -r, -rate int
-        Requests per second (TPS). Default: 1000
+        Requests per second (TPS). Default: 0 (Follow JMX or unthrottled)
 
   -d, -duration string
-        Test duration. e.g., 30s, 1m, 5m. Default: 30s
+        Test duration. e.g., 30s, 1m, 5m. Default: none (Follow JMX)
 
   -w, -workers int
-        Max concurrent workers. 0 means use default (10000)
+        Max concurrent workers. 0 means follow JMX
 
   -p string
         Path to .properties file. Can be specified multiple times
@@ -240,7 +240,7 @@ Options:
         Must be used with the -e option
 
   -f, -force-cli
-        Force CLI rate and duration, ignoring JMX Thread Group configuration (like Stepping configurations).
+        Force conversion of complex Thread Groups (Stepping, Ultimate, etc.) into Standard Thread Groups, completely ignoring their step schedules.
 
   -jmeter-home string
         JMETER_HOME path. Automatically references the $JMETER_HOME environment variable

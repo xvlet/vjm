@@ -29,14 +29,58 @@ func (m *multiFlag) Set(v string) error {
 	return nil
 }
 
+func handleMerge(args []string) {
+	mergeCmd := flag.NewFlagSet("merge", flag.ExitOnError)
+	output := mergeCmd.String("o", "", "Output JTL file path")
+
+	mergeCmd.Usage = func() {
+		fmt.Println("Usage: vjm merge -o <output.jtl> <input1.jtl> <input2.jtl> ...")
+		mergeCmd.PrintDefaults()
+	}
+
+	if err := mergeCmd.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing merge arguments: %v\n", err)
+		os.Exit(1)
+	}
+
+	inputs := mergeCmd.Args()
+
+	if *output == "" {
+		fmt.Println("Error: -o (output file) is required")
+		mergeCmd.Usage()
+		os.Exit(1)
+	}
+
+	if len(inputs) == 0 {
+		fmt.Println("Error: No input files provided")
+		mergeCmd.Usage()
+		os.Exit(1)
+	}
+
+	uc := usecase.NewMergeJtlUsecase()
+	err := uc.Execute(*output, inputs)
+	if err != nil {
+		log.Fatalf("Merge failed: %v", err)
+	}
+	fmt.Printf("Merge successfully completed: %s\n", *output)
+}
+
 func main() {
+	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
+		switch os.Args[1] {
+		case "merge":
+			handleMerge(os.Args[2:]) // Pass from os.Args[2:] so FlagSet can parse
+			return
+		}
+	}
+
 	jmxPath := flag.String("t", "", "JMeter .jmx file path")
 
-	rate := flag.Int("rate", 1000, "TPS Rate")
-	flag.IntVar(rate, "r", 1000, "TPS Rate (alias for -rate)")
+	rate := flag.Int("rate", 0, "TPS Rate (0 means unthrottled or use JMX settings)")
+	flag.IntVar(rate, "r", 0, "TPS Rate (alias for -rate)")
 
-	duration := flag.String("duration", "30s", "Duration (e.g. 30s, 1m)")
-	flag.StringVar(duration, "d", "30s", "Duration (alias for -duration)")
+	duration := flag.String("duration", "", "Duration (e.g. 30s, 1m). Empty means use JMX settings")
+	flag.StringVar(duration, "d", "", "Duration (alias for -duration)")
 
 	workers := flag.Int("workers", 0, "Max workers (0 means vegeta default)")
 	flag.IntVar(workers, "w", 0, "Max workers (alias for -workers)")
@@ -85,7 +129,7 @@ func main() {
 		fmt.Println("  -g, -report-only string")
 		fmt.Println("        Generate report only from an existing .bin file")
 		fmt.Println("  -f, -force-cli")
-		fmt.Println("        Force CLI rate and duration, ignoring JMX Thread Group configuration")
+		fmt.Println("        Force conversion of complex Thread Groups (Stepping, Ultimate, etc.) into Standard Thread Groups")
 		fmt.Printf("  -jmeter-home string\n        JMETER_HOME path (default %q)\n", os.Getenv("JMETER_HOME"))
 		fmt.Println("  -v, -version")
 		fmt.Println("        Print version information and exit")

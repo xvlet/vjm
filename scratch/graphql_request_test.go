@@ -51,7 +51,6 @@ func TestGraphQLRequestSampler(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-
 	// 2. Parse JMX
 	p := parser.NewDefaultJmxParser()
 	plan, err := p.Parse("../tests/samplers/test_graphql_request.jmx")
