@@ -13,7 +13,7 @@ main() {
     echo " \\ V /| || | | | | |"
     echo "  \\_/ | ||_| |_| |_|"
     echo "     _/ |         vjm installer ⚡"
-    echo "    |__/          github.com/xvlet/vjm"
+    echo "    |__/          https://vjm-cli.pages.dev"
     echo ""
 
     # detect platform
