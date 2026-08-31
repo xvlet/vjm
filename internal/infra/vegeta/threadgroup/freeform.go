@@ -38,7 +38,7 @@ func (r *FreeFormArrivalsRunner) Run(ctx context.Context, plan *domain.TestPlan,
 		config.Workers = concurrencyLimit
 	}
 
-	log.Printf("[VegetaRunner] Found FreeFormArrivalsThreadGroup config. Schedule Rows: %d, ConcurrencyLimit: %d", len(ffCfg.Schedule), concurrencyLimit)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Found FreeFormArrivalsThreadGroup config. Schedule Rows: %d, ConcurrencyLimit: %d", len(ffCfg.Schedule), concurrencyLimit)
 
 	var scheduleParts []string
 	prevEndTPS := -1.0
@@ -74,7 +74,7 @@ func (r *FreeFormArrivalsRunner) Run(ctx context.Context, plan *domain.TestPlan,
 	}
 
 	schedule := strings.Join(scheduleParts, " ")
-	log.Printf("[VegetaRunner] Free-Form Arrivals: Translating to OpenModelSchedule: %s", schedule)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Free-Form Arrivals: Translating to OpenModelSchedule: %s", schedule)
 
 	pacer, err := engine.ParseOpenModelSchedule(schedule)
 	if err != nil {

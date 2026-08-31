@@ -41,12 +41,12 @@ func (r *ConcurrencyRunner) Run(ctx context.Context, plan *domain.TestPlan, conf
 	rampUpSec := rampUp * mult
 	holdSec := hold * mult
 
-	log.Printf("[VegetaRunner] Found ConcurrencyThreadGroup config. TargetRate: %d, RampUp: %ds, Steps: %d, Hold: %ds", targetLevel, rampUpSec, steps, holdSec)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Found ConcurrencyThreadGroup config. TargetRate: %d, RampUp: %ds, Steps: %d, Hold: %ds", targetLevel, rampUpSec, steps, holdSec)
 
 	if steps <= 0 {
 		// Use open model pacer
 		schedule := fmt.Sprintf("rate(0/s) random_arrivals(%ds) rate(%d/s) random_arrivals(%ds) rate(%d/s)", rampUpSec, targetLevel, holdSec, targetLevel)
-		log.Printf("[VegetaRunner] Concurrency: Translating linear ramp to OpenModelSchedule: %s", schedule)
+		log.Printf("\033[33m[VegetaRunner]\033[0m Concurrency: Translating linear ramp to OpenModelSchedule: %s", schedule)
 		plan.ThreadGroups[0].OpenModelSchedule = schedule
 
 		pacer, err := engine.ParseOpenModelSchedule(schedule)
@@ -91,7 +91,7 @@ func (r *ConcurrencyRunner) Run(ctx context.Context, plan *domain.TestPlan, conf
 	}
 
 	pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
-	log.Printf("[VegetaRunner] Concurrency: Running dynamic Closed Model with Max %d Users for %s", targetLevel, totalDur)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Concurrency: Running dynamic Closed Model with Max %d Users for %s", targetLevel, totalDur)
 
 	return engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, totalDur)
 }

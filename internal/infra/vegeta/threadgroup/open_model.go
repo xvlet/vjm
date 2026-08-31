@@ -26,7 +26,7 @@ func (r *OpenModelRunner) Run(ctx context.Context, plan *domain.TestPlan, config
 		return fmt.Errorf("failed to parse open model schedule: %w", err)
 	}
 
-	log.Printf("[VegetaRunner] Using OpenModelPacer with duration %s", pacer.TotalDur)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Using OpenModelPacer with duration %s", pacer.TotalDur)
 
 	return engine.RunSingle(ctx, plan, config, eval, pacer, pacer.TotalDur)
 }

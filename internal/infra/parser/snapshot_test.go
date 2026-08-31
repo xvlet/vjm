@@ -53,7 +53,10 @@ func TestJmxParserSnapshots(t *testing.T) {
 					t.Fatalf("Failed to read snapshot: %v", err)
 				}
 
-				if string(planJSON) != string(snapshotData) {
+				cleanSnapshot := strings.TrimSpace(strings.ReplaceAll(string(snapshotData), "\r\n", "\n"))
+				cleanPlan := strings.TrimSpace(strings.ReplaceAll(string(planJSON), "\r\n", "\n"))
+
+				if cleanPlan != cleanSnapshot {
 					// Output diff or just fail
 					t.Errorf("Mismatch for %s.\nExpected (Snapshot):\n%s\n\nActual (Parsed):\n%s\n", jmxFile, string(snapshotData), string(planJSON))
 				}

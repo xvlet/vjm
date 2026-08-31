@@ -51,7 +51,7 @@ func (r *UltimateRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 		}
 	}
 
-	log.Printf("[VegetaRunner] Found UltimateThreadGroup config. Total Duration: %s, Records: %d, Max Users: %d", maxDur, len(rows), totalWorkers)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Found UltimateThreadGroup config. Total Duration: %s, Records: %d, Max Users: %d", maxDur, len(rows), totalWorkers)
 
 	stepConfig := *config
 	stepConfig.Workers = totalWorkers

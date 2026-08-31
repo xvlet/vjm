@@ -379,7 +379,7 @@ func (a *StatefulAttacker) Attack(ctx context.Context, plan *domain.TestPlan, gl
 		defer cancel()
 
 		var wg sync.WaitGroup
-		fmt.Println("[StatefulAttacker] Starting stateful execution...")
+		fmt.Println("\033[32m[StatefulAttacker]\033[0m Starting stateful execution...")
 
 		// Reset per-attack state: ThroughputController total execution counters
 		globalThroughputLocks.Range(func(k, _ interface{}) bool {
