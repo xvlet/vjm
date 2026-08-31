@@ -12,10 +12,12 @@
 
 <p align="center">
   <a href="https://github.com/xvlet/vjm"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="https://vjm-cli.pages.dev/"><img src="https://img.shields.io/badge/Website-vjm--cli.pages.dev-4A90D9?style=for-the-badge&logo=cloudflarepages&logoColor=white" alt="Website"></a>
   <a href="https://github.com/xvlet/vjm/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20AIX-lightgrey?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Arch-amd64%20%7C%20arm64%20%7C%20ppc64-blueviolet?style=for-the-badge" alt="Architecture">
   <img src="https://img.shields.io/badge/CGO-Disabled-orange?style=for-the-badge" alt="CGO Disabled">
+  <a href="README.md"><img src="https://img.shields.io/badge/Lang-English-blue?style=for-the-badge" alt="English"></a>
 </p>
 
 ---

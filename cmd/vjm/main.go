@@ -113,13 +113,13 @@ func main() {
 		fmt.Println()
 		fmt.Println("Options:")
 		fmt.Println("  -t string")
-		fmt.Println("        JMeter .jmx file path")
+		fmt.Println("        JMeter .jmx file path (required for test execution)")
 		fmt.Println("  -r, -rate int")
-		fmt.Println("        TPS Rate (default 1000)")
+		fmt.Println("        TPS Rate (default 0: follow JMX ThroughputTimer or unthrottled)")
 		fmt.Println("  -d, -duration string")
-		fmt.Println("        Duration (e.g. 30s, 1m) (default \"30s\")")
+		fmt.Println("        Duration (e.g. 30s, 1m) (default \"\": follow JMX Scheduler)")
 		fmt.Println("  -w, -workers int")
-		fmt.Println("        Max workers (0 means vegeta default)")
+		fmt.Println("        Max workers (default 0: follow JMX NumThreads)")
 		fmt.Println("  -p value")
 		fmt.Println("        Properties file (can be specified multiple times)")
 		fmt.Println("  -l string")
@@ -127,18 +127,21 @@ func main() {
 		fmt.Println("  -e, -export string")
 		fmt.Println("        HTML Report output directory")
 		fmt.Println("  -g, -report-only string")
-		fmt.Println("        Generate report only from an existing .bin file")
+		fmt.Println("        Generate report only from an existing .bin or .jtl file")
 		fmt.Println("  -f, -force-cli")
 		fmt.Println("        Force conversion of complex Thread Groups (Stepping, Ultimate, etc.) into Standard Thread Groups")
 		fmt.Printf("  -jmeter-home string\n        JMETER_HOME path (default %q)\n", os.Getenv("JMETER_HOME"))
 		fmt.Println("  -v, -version")
 		fmt.Println("        Print version information and exit")
+		fmt.Println()
+		fmt.Println("Docs & Homepage: https://vjm-cli.pages.dev")
 	}
 
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Printf("vjm %s\n", Version)
+		fmt.Printf("vjm version %s\n", Version)
+		fmt.Printf("(Docs & Homepage: https://vjm-cli.pages.dev/)\n")
 		os.Exit(0)
 	}
 

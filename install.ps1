@@ -13,7 +13,7 @@ Write-Host "\ \ / / || '_ \` _ \ "
 Write-Host " \ V /| || | | | | |"
 Write-Host "  \_/ | ||_| |_| |_|"
 Write-Host "     _/ |         vjm installer ⚡"
-Write-Host "    |__/          github.com/$REPO"
+Write-Host "    |__/          https://vjm-cli.pages.dev"
 Write-Host ""
 
 # Detect Architecture
