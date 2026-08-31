@@ -301,8 +301,12 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 			if len(plan.ThreadGroups) > 0 {
 				tgName = plan.ThreadGroups[0].Name
 			}
-			log.Printf("[Dashboard: %s] %02d:%02d | TPS: %5.1f | Avg: %5.1fms | P99: %5.1fms | Max: %5.1fms | Err: %3.1f%% | TotReq: %d",
-				tgName, int(elapsed.Minutes()), int(elapsed.Seconds())%60, tps, avgLatMs, p99, maxLat, errPct, tReqs)
+			errColor := "\033[32m"
+			if errPct > 0 {
+				errColor = "\033[31m"
+			}
+			log.Printf("\033[90m[Dashboard: %s] %02d:%02d\033[0m | TPS: \033[96m%7.1f\033[0m | Avg: \033[32m%5.1fms\033[0m | P99: \033[33m%5.1fms\033[0m | Max: %5.1fms | Err: %s%3.1f%%\033[0m | TotReq: %d",
+				tgName, int(elapsed.Minutes()), int(elapsed.Seconds())%60, tps, avgLatMs, p99, maxLat, errColor, errPct, tReqs)
 
 			if backendMetricsChan != nil {
 				select {
@@ -327,6 +331,6 @@ func RunSingle(ctx context.Context, plan *domain.TestPlan, config *domain.TestCo
 	}
 
 	elapsed := time.Since(attackStart).Round(time.Millisecond)
-	log.Printf("[VegetaRunner] Step completed in %s.", elapsed)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Step completed in %s.", elapsed)
 	return nil
 }

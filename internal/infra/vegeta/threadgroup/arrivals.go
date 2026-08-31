@@ -56,12 +56,12 @@ func (r *ArrivalsRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 	rampUpSec := int(rampUp * mult)
 	holdSec := int(hold * mult)
 
-	log.Printf("[VegetaRunner] Found ArrivalsThreadGroup config. TargetRate: %.2f TPS, RampUp: %ds, Steps: %d, Hold: %ds, ConcurrencyLimit: %d", targetRateTPS, rampUpSec, steps, holdSec, concurrencyLimit)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Found ArrivalsThreadGroup config. TargetRate: %.2f TPS, RampUp: %ds, Steps: %d, Hold: %ds, ConcurrencyLimit: %d", targetRateTPS, rampUpSec, steps, holdSec, concurrencyLimit)
 
 	if steps <= 0 {
 		// Use open model pacer for linear ramp up
 		schedule := fmt.Sprintf("rate(0/s) random_arrivals(%ds) rate(%.2f/s) random_arrivals(%ds) rate(%.2f/s)", rampUpSec, targetRateTPS, holdSec, targetRateTPS)
-		log.Printf("[VegetaRunner] Arrivals: Translating linear ramp to OpenModelSchedule: %s", schedule)
+		log.Printf("\033[33m[VegetaRunner]\033[0m Arrivals: Translating linear ramp to OpenModelSchedule: %s", schedule)
 		plan.ThreadGroups[0].OpenModelSchedule = schedule
 
 		pacer, err := engine.ParseOpenModelSchedule(schedule)
@@ -86,7 +86,7 @@ func (r *ArrivalsRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 		}
 
 		durationStr := fmt.Sprintf("%ds", stepDurSec)
-		log.Printf("[VegetaRunner] --- Arrivals: Running step %d at %.2f TPS for %s ---", stepIndex, currentRate, durationStr)
+		log.Printf("\033[33m[VegetaRunner]\033[0m --- Arrivals: Running step %d at %.2f TPS for %s ---", stepIndex, currentRate, durationStr)
 
 		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
 		binPaths = append(binPaths, stepBinPath)
@@ -104,7 +104,7 @@ func (r *ArrivalsRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 
 	if holdSec > 0 {
 		durationStr := fmt.Sprintf("%ds", holdSec)
-		log.Printf("[VegetaRunner] --- Arrivals: Holding Target Rate %.2f TPS for %s ---", targetRateTPS, durationStr)
+		log.Printf("\033[33m[VegetaRunner]\033[0m --- Arrivals: Holding Target Rate %.2f TPS for %s ---", targetRateTPS, durationStr)
 
 		stepBinPath := fmt.Sprintf("%s.%d", baseBinPath, stepIndex)
 		binPaths = append(binPaths, stepBinPath)

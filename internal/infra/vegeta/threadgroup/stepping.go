@@ -30,7 +30,7 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 	stepDurSec, _ := strconv.Atoi(eval.Evaluate(stepCfg.StepDuration))
 	holdDurSec, _ := strconv.Atoi(eval.Evaluate(stepCfg.HoldDuration))
 
-	log.Printf("[VegetaRunner] Found SteppingThreadGroup config. MaxRate: %d, StepRate: %d", maxRate, stepRate)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Found SteppingThreadGroup config. MaxRate: %d, StepRate: %d", maxRate, stepRate)
 
 	if stepRate <= 0 {
 		stepRate = maxRate
@@ -66,7 +66,7 @@ func (r *SteppingRunner) Run(ctx context.Context, plan *domain.TestPlan, config 
 	}
 
 	pacer := vegeta.ConstantPacer{Freq: 0, Per: time.Second}
-	log.Printf("[VegetaRunner] Stepping: Running dynamic Closed Model with Max %d Users for %s", maxRate, totalDur)
+	log.Printf("\033[33m[VegetaRunner]\033[0m Stepping: Running dynamic Closed Model with Max %d Users for %s", maxRate, totalDur)
 
 	return engine.RunSingle(ctx, plan, &stepConfig, eval, pacer, totalDur)
 }

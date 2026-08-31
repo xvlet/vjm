@@ -44,7 +44,7 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 		return fmt.Errorf("Execute requires a fully configured usecase; use NewStressTestUsecase")
 	}
 
-	log.Println("[Usecase] Parsing JMX Template...")
+	log.Println("\033[35m[Usecase]\033[0m Parsing JMX Template...")
 	plan, err := u.jmxParser.Parse(config.JmxFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse JMX: %w", err)
@@ -58,17 +58,17 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 		u.evaluator.AddVariables(plan.UserDefinedVariables)
 	}
 
-	log.Println("[Usecase] Executing Vegeta Load Test...")
+	log.Println("\033[35m[Usecase]\033[0m Executing Vegeta Load Test...")
 	err = u.runner.Run(ctx, plan, config, u.evaluator)
 	if err != nil {
 		return fmt.Errorf("vegeta run failed: %w", err)
 	}
 
 	if err := u.reporter.PrintReport(config.ResultBinPath); err != nil {
-		log.Printf("[Usecase] Warning: Failed to print vegeta report: %v", err)
+		log.Printf("\033[35m[Usecase]\033[0m Warning: Failed to print vegeta report: %v", err)
 	}
 
-	log.Printf("[Usecase] Converting Bin (%s) to JTL (%s)...", config.ResultBinPath, config.ResultJtlPath)
+	log.Println("\033[35m[Usecase]\033[0m Converting Bin to JTL...")
 	err = u.reporter.ConvertToJTL(plan, config.ResultBinPath, config.ResultJtlPath)
 	if err != nil {
 		return fmt.Errorf("JTL conversion failed: %w", err)
@@ -99,14 +99,14 @@ func (u *defaultStressTestUsecase) Execute(ctx context.Context, config *domain.T
 	}
 
 	if config.ReportDirPath != "" {
-		log.Println("[Usecase] Generating HTML Report...")
+		log.Println("\033[35m[Usecase]\033[0m Generating HTML Report...")
 		err = u.reporter.GenerateHTML(config.ResultJtlPath, config.ReportDirPath, 1000)
 		if err != nil {
 			return fmt.Errorf("HTML report generation failed: %w", err)
 		}
 	}
 
-	log.Println("[Usecase] Stress Test flow completed successfully!")
+	log.Println("\033[35m[Usecase]\033[0m \033[32mStress Test flow completed successfully!\033[0m")
 	return nil
 }
 
@@ -121,27 +121,27 @@ func (u *defaultStressTestUsecase) GenerateReportOnly(inputPath string, reportDi
 			jtlPath = inputPath + ".jtl"
 		}
 
-		log.Printf("[Usecase] Converting Bin (%s) to JTL (%s)...", inputPath, jtlPath)
+		log.Println("\033[35m[Usecase]\033[0m Converting Bin to JTL...")
 		err := u.reporter.ConvertToJTL(nil, inputPath, jtlPath)
 		if err != nil {
 			return fmt.Errorf("JTL conversion failed: %w", err)
 		}
 	} else {
-		log.Printf("[Usecase] JTL file provided directly (%s), skipping bin conversion.", jtlPath)
+		log.Printf("\033[35m[Usecase]\033[0m JTL file provided directly (%s), skipping bin conversion.", jtlPath)
 	}
 
 	if reportDirPath == "" {
-		log.Println("[Usecase] No report directory specified (-e). Skipping HTML report generation.")
-		log.Printf("[Usecase] JTL file is ready at: %s", jtlPath)
-		log.Println("[Usecase] Report generation flow completed successfully!")
+		log.Println("\033[35m[Usecase]\033[0m No report directory specified (-e). Skipping HTML report generation.")
+		log.Printf("\033[35m[Usecase]\033[0m JTL file is ready at: %s", jtlPath)
+		log.Println("\033[35m[Usecase]\033[0m \033[32mReport generation flow completed successfully!\033[0m")
 		return nil
 	}
 
-	log.Printf("[Usecase] Generating HTML Report to %s...", reportDirPath)
+	log.Printf("\033[35m[Usecase]\033[0m Generating HTML Report to %s...", reportDirPath)
 	if err := u.reporter.GenerateHTML(jtlPath, reportDirPath, 1000); err != nil {
 		return fmt.Errorf("HTML report generation failed: %w", err)
 	}
 
-	log.Println("[Usecase] Report generation flow completed successfully!")
+	log.Println("\033[35m[Usecase]\033[0m \033[32mReport generation flow completed successfully!\033[0m")
 	return nil
 }

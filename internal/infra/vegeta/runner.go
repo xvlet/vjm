@@ -68,7 +68,7 @@ func (r *Runner) Run(ctx context.Context, plan *domain.TestPlan, config *domain.
 		if len(groups) == 0 {
 			return nil
 		}
-		log.Printf("[VegetaRunner] Starting %s Phase with %d Thread Group(s)...", phase, len(groups))
+		log.Printf("\033[33m[VegetaRunner]\033[0m Starting %s Phase with %d Thread Group(s)...", phase, len(groups))
 
 		var wg sync.WaitGroup
 		errCh := make(chan error, len(groups))
